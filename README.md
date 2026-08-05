@@ -26,7 +26,7 @@ A modern Python desktop application that tracks playtime for games and applicati
 
 ### 1. Install Dependencies
 ```bash
-pip install PyQt6 psutil pillow pywin32
+pip install -r requirements.txt
 ```
 
 ### 2. Run the Application
@@ -68,6 +68,7 @@ Gametracker/
 ├── build_installer.py     # Automated Windows setup installer build script
 ├── build_exe.py           # Fast PyInstaller distribution packager
 ├── build.bat              # 1-Click batch build launcher
+├── requirements.txt       # Project Python dependencies & setup list
 ├── ui/
 │   ├── main_window.py     # Main application window & system tray logic
 │   ├── game_card.py       # Library grid card component with torrent progress bars
