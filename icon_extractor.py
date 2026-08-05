@@ -1,7 +1,9 @@
 import os
 import sys
+import re
 import ctypes
 import logging
+from typing import Optional
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 from config import ICONS_DIR, COLOR_ACCENT, COLOR_CYAN
@@ -96,12 +98,20 @@ if sys.platform == "win32":
     gdi32.GetDIBits.restype = ctypes.c_int
 
 
-def extract_icon_from_exe(exe_path: str, output_icon_name: str, size: int = 64) -> str:
+def extract_icon_from_exe(exe_path: str, output_icon_name: Optional[str] = None, size: int = 64) -> str:
     """
     Extracts high-quality icon from executable or file path on Windows.
     Saves to ICONS_DIR / output_icon_name.png.
     Returns path to saved icon image, or fallback icon path if extraction fails.
     """
+    if not output_icon_name:
+        if exe_path:
+            output_icon_name = Path(exe_path).stem
+        else:
+            output_icon_name = "icon"
+
+    output_icon_name = re.sub(r'[^a-zA-Z0-9_-]', '_', str(output_icon_name))
+
     target_path = ICONS_DIR / f"{output_icon_name}.png"
     if target_path.exists():
         return str(target_path)
