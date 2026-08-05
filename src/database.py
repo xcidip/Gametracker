@@ -103,6 +103,15 @@ class GameEntry:
         return format_playtime(self.playtime, verbose)
 
 
+def _normalize_path(p: str) -> str:
+    if not p:
+        return ""
+    try:
+        return os.path.normpath(p).replace("/", "\\").lower()
+    except Exception:
+        return p.lower()
+
+
 class DatabaseManager:
     def __init__(self, data_file: Path = DATA_FILE):
         self.data_file = Path(data_file)
@@ -121,9 +130,43 @@ class DatabaseManager:
                 data = json.load(f)
                 games_list = data.get("games", [])
                 self.games = {g["id"]: GameEntry.from_dict(g) for g in games_list}
+            self.deduplicate()
             logger.info(f"Loaded {len(self.games)} games from library database file: {path}")
         except Exception as e:
             logger.error(f"Error loading database file '{path}': {e}")
+
+    def deduplicate(self):
+        """Merges duplicate game entries matching by normalized exe_path or lowercased name."""
+        unique_games: Dict[str, GameEntry] = {}
+        seen_keys: Dict[str, str] = {}  # key -> game_id
+
+        for g in list(self.games.values()):
+            norm_exe = _normalize_path(g.exe_path)
+            norm_name = g.name.strip().lower()
+            key = f"exe:{norm_exe}" if norm_exe else f"name:{norm_name}"
+
+            if key in seen_keys:
+                existing_id = seen_keys[key]
+                existing = unique_games[existing_id]
+                # Merge stats & properties into existing entry
+                existing.playtime = max(existing.playtime, g.playtime)
+                existing.is_favorite = existing.is_favorite or g.is_favorite
+                if g.last_played != "Never" and (existing.last_played == "Never" or g.last_played > existing.last_played):
+                    existing.last_played = g.last_played
+                if not existing.exe_path and g.exe_path:
+                    existing.exe_path = g.exe_path
+                if not existing.icon_path and g.icon_path:
+                    existing.icon_path = g.icon_path
+                if not existing.launch_args and g.launch_args:
+                    existing.launch_args = g.launch_args
+            else:
+                seen_keys[key] = g.id
+                unique_games[g.id] = g
+
+        if len(unique_games) != len(self.games):
+            logger.info(f"Deduplicated library from {len(self.games)} games to {len(unique_games)} games.")
+            self.games = unique_games
+            self.save()
 
     def save(self, target_path: Optional[Path] = None):
         """Saves database atomically to JSON file."""
@@ -174,7 +217,7 @@ class DatabaseManager:
                     existing.playtime = max(existing.playtime, entry.playtime)
                     if entry.last_played != "Never":
                         existing.last_played = entry.last_played
-        self.save()
+        self.deduplicate()
 
     def add_game(
         self,
@@ -184,12 +227,24 @@ class DatabaseManager:
         icon_path: Optional[str] = None,
         launch_args: str = "",
     ) -> GameEntry:
-        """Adds a new game entry or updates existing one if exe matches."""
+        """Adds a new game entry or updates existing one if exe or name matches."""
+        norm_exe = _normalize_path(exe_path)
+        norm_name = name.strip().lower()
+
         for existing in self.games.values():
-            if existing.exe_path.lower() == exe_path.lower() and exe_path != "":
+            ext_norm_exe = _normalize_path(existing.exe_path)
+            ext_norm_name = existing.name.strip().lower()
+
+            if (norm_exe and ext_norm_exe and norm_exe == ext_norm_exe) or (norm_name and ext_norm_name and norm_name == ext_norm_name):
                 existing.name = name
+                if exe_path:
+                    existing.exe_path = exe_path
                 if process_name:
                     existing.process_name = process_name.lower()
+                if icon_path:
+                    existing.icon_path = icon_path
+                if launch_args:
+                    existing.launch_args = launch_args
                 self.save()
                 return existing
 

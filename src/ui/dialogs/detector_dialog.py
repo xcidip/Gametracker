@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
 )
 
 from src.core.tracker import scan_running_applications
-from src.database import DatabaseManager
+from src.database import DatabaseManager, _normalize_path
 
 logger = logging.getLogger("DetectorDialog")
 
@@ -129,7 +129,8 @@ class RunningAppDetectorDialog(QDialog):
         self.list_widget.clear()
 
         existing_games = self.db_manager.get_all_games()
-        existing_exes = {g.exe_path.lower() for g in existing_games if g.exe_path}
+        existing_exes = {_normalize_path(g.exe_path) for g in existing_games if g.exe_path}
+        existing_names = {g.name.strip().lower() for g in existing_games}
 
         for app in apps:
             item = QListWidgetItem(self.list_widget)
@@ -139,7 +140,7 @@ class RunningAppDetectorDialog(QDialog):
             item_widget.add_clicked.connect(self.on_add_app)
 
             # Highlight if already in library
-            if app["exe_path"].lower() in existing_exes:
+            if _normalize_path(app["exe_path"]) in existing_exes or app["name"].strip().lower() in existing_names:
                 item_widget.btn_add.setText("✓ In Library")
                 item_widget.btn_add.setObjectName("SecondaryButton")
                 item_widget.btn_add.setEnabled(False)

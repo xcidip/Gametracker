@@ -12,7 +12,7 @@ from PyQt6.QtWidgets import (
     QMessageBox, QButtonGroup
 )
 
-from src.database import DatabaseManager
+from src.database import DatabaseManager, _normalize_path
 from src.core.icon_extractor import extract_icon_from_exe
 from src.core.platform_importer import (
     LAUNCHER_DOWNLOADS,
@@ -340,8 +340,8 @@ class LaunchersViewWidget(QWidget):
     def import_all_games(self):
         query = self.search_input.text().lower().strip()
         existing_games = self.db_manager.get_all_games()
-        existing_exes = {g.exe_path.lower() for g in existing_games if g.exe_path}
-        existing_names = {g.name.lower() for g in existing_games}
+        existing_exes = {_normalize_path(g.exe_path) for g in existing_games if g.exe_path}
+        existing_names = {g.name.strip().lower() for g in existing_games}
 
         added_count = 0
         for game_info in self.scanned_games:
@@ -353,7 +353,7 @@ class LaunchersViewWidget(QWidget):
             exe = game_info["exe_path"]
             name = game_info["name"]
 
-            if exe.lower() in existing_exes or name.lower() in existing_names:
+            if _normalize_path(exe) in existing_exes or name.strip().lower() in existing_names:
                 continue
 
             safe_icon_name = re.sub(r'[^a-zA-Z0-9_-]', '_', name)
