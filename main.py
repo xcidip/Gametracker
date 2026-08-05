@@ -1,0 +1,59 @@
+import sys
+import os
+import logging
+from PyQt6.QtWidgets import QApplication
+from PyQt6.QtCore import Qt
+
+from config import APP_NAME
+from database import DatabaseManager
+from tracker import TimeTrackerThread
+from ui.main_window import MainWindow
+
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        handlers=[
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+
+def main():
+    setup_logging()
+    logger = logging.getLogger("Main")
+    logger.info(f"Starting {APP_NAME}...")
+
+    # Enable High DPI Scaling for crisp UI on high-res displays
+    os.environ["QT_AUTO_SCREEN_SCALE_FACTOR"] = "1"
+
+    app = QApplication(sys.argv)
+    app.setApplicationName(APP_NAME)
+    app.setStyle("Fusion")
+
+    # Initialize Persistence Manager
+    db_manager = DatabaseManager()
+
+    # Start Background Time Tracker Worker
+    tracker_thread = TimeTrackerThread(db_manager=db_manager, poll_interval=1.0)
+    tracker_thread.start()
+
+    # Create Main UI Window
+    window = MainWindow(db_manager=db_manager, tracker_thread=tracker_thread)
+
+    # If launched with --minimized (e.g. on Windows startup), keep in system tray
+    if "--minimized" not in sys.argv:
+        window.show()
+    else:
+        logger.info("Application started minimized in System Tray.")
+
+    # Run Application Event Loop
+    exit_code = app.exec()
+
+    # Cleanup on close
+    tracker_thread.stop()
+    db_manager.save()
+    logger.info("Application exited cleanly.")
+    sys.exit(exit_code)
+
+if __name__ == "__main__":
+    main()
