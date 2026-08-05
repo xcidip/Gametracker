@@ -4,11 +4,27 @@ import shutil
 import subprocess
 from pathlib import Path
 
-def remove_readonly(func, path, exc_info):
-    """Clear the readonly bit and retry deletion."""
+def force_remove_dir(target_dir: Path):
+    """Recursively clear read-only attributes and delete folder."""
+    if not target_dir.exists():
+        return
+    for root, dirs, files in os.walk(target_dir, topdown=False):
+        for f in files:
+            p = Path(root) / f
+            try:
+                os.chmod(p, 0o777)
+                os.remove(p)
+            except Exception:
+                pass
+        for d in dirs:
+            p = Path(root) / d
+            try:
+                os.chmod(p, 0o777)
+                os.rmdir(p)
+            except Exception:
+                pass
     try:
-        os.chmod(path, 0o777)
-        func(path)
+        shutil.rmtree(target_dir, ignore_errors=True)
     except Exception:
         pass
 
@@ -26,20 +42,19 @@ def build_executable():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
 
     # 2. Base directory & main entry file
-    base_dir = Path(__file__).parent.resolve()
+    script_dir = Path(__file__).parent.resolve()
+    base_dir = script_dir.parent.resolve()
     main_py = base_dir / "main.py"
     dist_dir = base_dir / "dist" / "GameTracker"
+    build_dir = base_dir / "build" / "GameTracker"
 
     if not main_py.exists():
         print(f"[ERROR] main.py not found at {main_py}")
         sys.exit(1)
 
     # Clean previous build artifacts if they exist
-    if dist_dir.exists():
-        try:
-            shutil.rmtree(dist_dir, onerror=remove_readonly)
-        except Exception as e:
-            print(f"[NOTE] Could not clean previous dist folder: {e}")
+    force_remove_dir(dist_dir)
+    force_remove_dir(build_dir)
 
     # 3. Construct optimized PyInstaller command for instant startup speed
     cmd = [
@@ -74,8 +89,23 @@ def build_executable():
         "--hidden-import", "win32gui",
         "--hidden-import", "win32api",
         "--hidden-import", "win32con",
-        "--hidden-import", "torrent_manager",
-        "--hidden-import", "ui.torrent_dialog",
+        "--hidden-import", "src",
+        "--hidden-import", "src.config",
+        "--hidden-import", "src.database",
+        "--hidden-import", "src.core.tracker",
+        "--hidden-import", "src.core.startup_manager",
+        "--hidden-import", "src.core.icon_extractor",
+        "--hidden-import", "src.core.platform_importer",
+        "--hidden-import", "src.core.torrent_manager",
+        "--hidden-import", "src.ui.main_window",
+        "--hidden-import", "src.ui.styles",
+        "--hidden-import", "src.ui.views.launchers_view",
+        "--hidden-import", "src.ui.views.stats_view",
+        "--hidden-import", "src.ui.views.debug_view",
+        "--hidden-import", "src.ui.components.game_card",
+        "--hidden-import", "src.ui.dialogs.add_game_dialog",
+        "--hidden-import", "src.ui.dialogs.detector_dialog",
+        "--hidden-import", "src.ui.dialogs.torrent_dialog",
         str(main_py)
     ]
 

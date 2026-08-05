@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (
     QFrame, QTextEdit, QMessageBox, QScrollArea
 )
 
-from database import DatabaseManager, GameEntry
+from src.database import DatabaseManager, GameEntry
 
 logger = logging.getLogger("DebugView")
 

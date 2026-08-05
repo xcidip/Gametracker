@@ -12,8 +12,8 @@ from typing import Dict, Optional, Callable
 
 from PyQt6.QtCore import QThread, pyqtSignal, QObject
 
-from config import APP_DIR
-from database import DatabaseManager, GameEntry
+from src.config import APP_DIR
+from src.database import DatabaseManager, GameEntry
 
 logger = logging.getLogger("TorrentManager")
 

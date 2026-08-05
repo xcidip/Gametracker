@@ -31,11 +31,12 @@ def build_windows_setup_installer():
     print("    Building GameTracker Windows Setup Installer")
     print("=" * 60)
 
-    base_dir = Path(__file__).parent.resolve()
+    script_dir = Path(__file__).parent.resolve()
+    base_dir = script_dir.parent.resolve()
 
     # Step 1: Build PyInstaller distribution directory
     print("\n[Step 1/2] Building executable distribution binaries...")
-    build_script = base_dir / "build_exe.py"
+    build_script = script_dir / "build_exe.py"
     res = subprocess.run([sys.executable, str(build_script)], cwd=base_dir)
     if res.returncode != 0:
         print("[ERROR] PyInstaller build failed!")

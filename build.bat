@@ -2,5 +2,5 @@
 echo ============================================================
 echo   Building GameTracker Windows Setup Installer...
 echo ============================================================
-python build_installer.py
+python scripts\build_installer.py
 pause

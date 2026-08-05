@@ -6,7 +6,7 @@ import logging
 from typing import Optional
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
-from config import ICONS_DIR, COLOR_ACCENT, COLOR_CYAN
+from src.config import ICONS_DIR, COLOR_ACCENT, COLOR_CYAN
 
 logger = logging.getLogger("IconExtractor")
 

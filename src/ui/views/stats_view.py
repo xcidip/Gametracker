@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (
     QScrollArea, QGridLayout
 )
 
-from database import DatabaseManager
-from config import format_playtime
+from src.database import DatabaseManager
+from src.config import format_playtime
 
 class StatSummaryCard(QFrame):
     """Stat KPI metric box (e.g. Total Playtime, Total Games)."""

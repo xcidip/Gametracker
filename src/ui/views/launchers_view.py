@@ -12,9 +12,9 @@ from PyQt6.QtWidgets import (
     QMessageBox, QButtonGroup
 )
 
-from database import DatabaseManager
-from icon_extractor import extract_icon_from_exe
-from platform_importer import (
+from src.database import DatabaseManager
+from src.core.icon_extractor import extract_icon_from_exe
+from src.core.platform_importer import (
     LAUNCHER_DOWNLOADS,
     is_steam_installed,
     is_epic_installed,

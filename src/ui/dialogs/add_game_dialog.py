@@ -7,8 +7,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QFileDialog, QMessageBox, QFrame
 )
 
-from icon_extractor import extract_icon_from_exe
-from database import DatabaseManager, GameEntry
+from src.core.icon_extractor import extract_icon_from_exe
+from src.database import DatabaseManager, GameEntry
 
 logger = logging.getLogger("AddGameDialog")
 

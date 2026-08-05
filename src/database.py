@@ -5,8 +5,8 @@ import uuid
 import logging
 from typing import Dict, List, Optional
 from pathlib import Path
-from config import DATA_FILE, format_playtime
-from icon_extractor import extract_icon_from_exe
+from src.config import DATA_FILE, format_playtime
+from src.core.icon_extractor import extract_icon_from_exe
 
 logger = logging.getLogger("Database")
 

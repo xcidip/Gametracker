@@ -4,10 +4,17 @@ import logging
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 
-from config import APP_NAME
-from database import DatabaseManager
-from tracker import TimeTrackerThread
-from ui.main_window import MainWindow
+from pathlib import Path
+
+# Add src package directory to sys.path
+SRC_DIR = Path(__file__).parent / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from src.config import APP_NAME
+from src.database import DatabaseManager
+from src.core.tracker import TimeTrackerThread
+from src.ui.main_window import MainWindow
 
 def setup_logging():
     logging.basicConfig(

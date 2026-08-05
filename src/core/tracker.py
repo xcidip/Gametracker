@@ -7,8 +7,8 @@ from typing import List, Dict, Tuple, Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from database import DatabaseManager, GameEntry
-from icon_extractor import extract_icon_from_exe
+from src.database import DatabaseManager, GameEntry
+from src.core.icon_extractor import extract_icon_from_exe
 
 logger = logging.getLogger("Tracker")
 

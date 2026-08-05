@@ -14,18 +14,18 @@ from PyQt6.QtWidgets import (
     QSystemTrayIcon, QMenu
 )
 
-from database import DatabaseManager, GameEntry
-from tracker import TimeTrackerThread
-from startup_manager import is_startup_enabled, set_startup_enabled
-from torrent_manager import ensure_aria2_installed, TorrentDownloadWorker, launch_elevated_installer, InstallerMonitorWorker
-from ui.styles import MAIN_STYLE
-from ui.game_card import GameCardWidget
-from ui.detector_dialog import RunningAppDetectorDialog
-from ui.add_game_dialog import AddGameDialog
-from ui.torrent_dialog import TorrentDownloadDialog
-from ui.stats_view import StatsViewWidget
-from ui.debug_view import DebugViewWidget
-from ui.launchers_view import LaunchersViewWidget
+from src.database import DatabaseManager, GameEntry
+from src.core.tracker import TimeTrackerThread
+from src.core.startup_manager import is_startup_enabled, set_startup_enabled
+from src.core.torrent_manager import ensure_aria2_installed, TorrentDownloadWorker, launch_elevated_installer, InstallerMonitorWorker
+from src.ui.styles import MAIN_STYLE
+from src.ui.components.game_card import GameCardWidget
+from src.ui.dialogs.detector_dialog import RunningAppDetectorDialog
+from src.ui.dialogs.add_game_dialog import AddGameDialog
+from src.ui.dialogs.torrent_dialog import TorrentDownloadDialog
+from src.ui.views.stats_view import StatsViewWidget
+from src.ui.views.debug_view import DebugViewWidget
+from src.ui.views.launchers_view import LaunchersViewWidget
 
 logger = logging.getLogger("MainWindow")
 
@@ -688,7 +688,7 @@ class MainWindow(QMainWindow):
     def prompt_select_installed_exe(self, game_id: str):
         import shutil
         from PyQt6.QtWidgets import QFileDialog
-        from icon_extractor import extract_icon_from_exe
+        from src.core.icon_extractor import extract_icon_from_exe
 
         game = self.db_manager.get_game_by_id(game_id)
         if not game:

@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QListWidget, QListWidgetItem, QWidget, QMessageBox
 )
 
-from tracker import scan_running_applications
-from database import DatabaseManager
+from src.core.tracker import scan_running_applications
+from src.database import DatabaseManager
 
 logger = logging.getLogger("DetectorDialog")
 

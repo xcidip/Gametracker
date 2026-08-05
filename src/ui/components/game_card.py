@@ -9,8 +9,8 @@ from PyQt6.QtWidgets import (
     QMenu, QMessageBox, QWidget, QProgressBar
 )
 
-from database import GameEntry
-from config import format_playtime
+from src.database import GameEntry
+from src.config import format_playtime
 
 logger = logging.getLogger("GameCard")
 
