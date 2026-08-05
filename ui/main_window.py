@@ -24,6 +24,7 @@ from ui.detector_dialog import RunningAppDetectorDialog
 from ui.add_game_dialog import AddGameDialog
 from ui.torrent_dialog import TorrentDownloadDialog
 from ui.stats_view import StatsViewWidget
+from ui.debug_view import DebugViewWidget
 
 logger = logging.getLogger("MainWindow")
 
@@ -93,6 +94,12 @@ class MainWindow(QMainWindow):
         self.btn_nav_stats.setCheckable(True)
         self.btn_nav_stats.clicked.connect(lambda: self.switch_view(1))
         sb_layout.addWidget(self.btn_nav_stats)
+
+        self.btn_nav_debug = QPushButton("🛠️ Debug")
+        self.btn_nav_debug.setObjectName("NavButton")
+        self.btn_nav_debug.setCheckable(True)
+        self.btn_nav_debug.clicked.connect(lambda: self.switch_view(2))
+        sb_layout.addWidget(self.btn_nav_debug)
 
         sb_layout.addSpacing(15)
 
@@ -203,6 +210,10 @@ class MainWindow(QMainWindow):
         self.stats_view = StatsViewWidget(self.db_manager)
         self.stacked_widget.addWidget(self.stats_view)
 
+        # View 2: Debug View
+        self.debug_view = DebugViewWidget(self.db_manager, on_library_updated=self.reload_library_grid)
+        self.stacked_widget.addWidget(self.debug_view)
+
         content_layout.addWidget(self.stacked_widget, stretch=1)
 
         root_layout.addWidget(content_frame, stretch=1)
@@ -213,10 +224,13 @@ class MainWindow(QMainWindow):
     def switch_view(self, index: int):
         self.btn_nav_library.setChecked(index == 0)
         self.btn_nav_stats.setChecked(index == 1)
+        self.btn_nav_debug.setChecked(index == 2)
         self.stacked_widget.setCurrentIndex(index)
 
         if index == 1:
             self.stats_view.refresh_stats()
+        elif index == 2:
+            self.debug_view.refresh_info()
 
     def reload_library_grid(self):
         # Clear existing card widgets
