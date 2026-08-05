@@ -1,19 +1,20 @@
 # 🎮 GameTracker - App & Game Playtime Tracker
 
-A modern Python desktop application that tracks playtime for games and applications in real time, extracts native high-resolution executable icons, provides 1-click running app detection, and runs silently in the Windows system tray.
+A modern Python desktop application that tracks playtime for games and applications in real time, extracts native high-resolution executable icons, provides 1-click running app detection, downloads games via built-in CLI Torrent engine, runs elevated setup installers, and runs silently in the Windows system tray.
 
 ---
 
 ## ✨ Features
 
+- **💿 Windows Setup Installer (`GameTracker_Setup.exe`)**: Professional Windows installer wizard that lets users choose any custom installation directory and optionally create a **Desktop Shortcut**.
+- **📥 Background Torrent & Magnet Downloader**: Built-in Torrent CLI engine (`aria2c`) that downloads games from magnet links or `.torrent` files in the background, displaying live progress bars, speed, and ETA inside your game library cards.
+- **🚀 Elevated Installer & Exe Assignment**: Launches downloaded setup installers with Administrator privileges (`runas`), monitors installer completion, prompts to select the installed game `.exe`, and offers to delete the temporary torrent download folder to free up disk space.
+- **⏱️ Playtime Tracking (Finished Games Only)**: Monitors active processes in real time down to the second. Automatically excludes setup installers and active downloads from playtime tracking.
 - **⚡ Active App Detector**: Scans running Windows processes and open windows, allowing you to add any application to your library with 1 click.
 - **🎨 Native Executable Icon Extraction**: Pulls high-resolution icons directly from `.exe` files using 64-bit Win32 C APIs (`PrivateExtractIconsW` & `ExtractIconExW`) and converts them into crisp PNG images.
-- **⏱️ Real-Time Playtime Tracking**: Monitors active processes with a lightweight background thread and updates total playtime down to the second.
-- **🚀 Game Launcher**: Launch games directly from the library grid with custom arguments and automatic working directory resolution.
 - **🔔 Silent System Tray Mode**: Closing the window minimizes the app to the Windows System Tray, allowing silent background time tracking without clogging your taskbar.
 - **💻 Run at Windows Startup**: Built-in toggle to launch GameTracker automatically when Windows boots up (starts minimized in the system tray).
 - **💾 JSON Data Export & Import**: Automatically saves to `%APPDATA%\GameTracker\library.json` with UI options to export or import database backups anytime.
-- **📊 Analytics Leaderboard**: View total library stats and rank games by playtime (`#1 Most Played`).
 
 ---
 
@@ -35,20 +36,20 @@ python main.py
 
 ---
 
-## 📦 Building Standalone Executable (.exe)
+## 📦 Building Windows Setup Installer (.exe)
 
-You can build a standalone `GameTracker.exe` that runs without requiring Python installed:
+You can build a standalone **`GameTracker_Setup.exe`** Windows Installer:
 
 ### Option A: Double-Click Batch File
 Double-click `build.bat` in Windows Explorer.
 
 ### Option B: Run Python Build Script
 ```bash
-python build_exe.py
+python build_installer.py
 ```
 
-The resulting executable will be created at:
-`dist\GameTracker\GameTracker.exe`
+The resulting Windows Setup Installer will be generated at:
+`dist_installer\GameTracker_Setup.exe`
 
 ---
 
@@ -59,15 +60,19 @@ Gametracker/
 ├── main.py                # Application entry point
 ├── config.py              # Configuration paths & UI color palette
 ├── database.py            # Persistence layer (JSON library storage & import/export)
-├── tracker.py             # Background process monitoring thread
+├── tracker.py             # Background process monitoring thread (playtime tracker)
 ├── icon_extractor.py      # Win32 C API icon extraction & fallback generator
+├── torrent_manager.py     # Background CLI torrent engine & installer monitor
 ├── startup_manager.py     # Windows Registry startup key integration
-├── build_exe.py           # Automated PyInstaller packaging script
+├── installer.iss          # Inno Setup Windows installer configuration script
+├── build_installer.py     # Automated Windows setup installer build script
+├── build_exe.py           # Fast PyInstaller distribution packager
 ├── build.bat              # 1-Click batch build launcher
 ├── ui/
 │   ├── main_window.py     # Main application window & system tray logic
-│   ├── game_card.py       # Library grid card component
+│   ├── game_card.py       # Library grid card component with torrent progress bars
 │   ├── detector_dialog.py # Active app scanner dialog
+│   ├── torrent_dialog.py  # Magnet link & .torrent file downloader modal
 │   ├── add_game_dialog.py # Custom .exe file picker dialog
 │   ├── stats_view.py      # Playtime analytics & leaderboard view
 │   └── styles.py          # Dark theme QSS stylesheet

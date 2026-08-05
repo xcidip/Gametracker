@@ -139,6 +139,10 @@ class TimeTrackerThread(QThread):
                 # Check all games in library against running processes
                 games = self.db_manager.get_all_games()
                 for game in games:
+                    # Skip tracking playtime for games that are downloading or pending installer setup
+                    if game.is_downloading or game.needs_installation:
+                        continue
+
                     target_proc = game.process_name.lower()
                     target_exe = game.exe_path.lower() if game.exe_path else ""
 

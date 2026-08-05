@@ -1,4 +1,6 @@
 @echo off
-echo Building GameTracker Executable...
-python build_exe.py
+echo ============================================================
+echo   Building GameTracker Windows Setup Installer...
+echo ============================================================
+python build_installer.py
 pause

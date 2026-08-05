@@ -14,7 +14,7 @@ class GameEntry:
     def __init__(
         self,
         name: str,
-        exe_path: str,
+        exe_path: str = "",
         process_name: Optional[str] = None,
         icon_path: Optional[str] = None,
         game_id: Optional[str] = None,
@@ -22,17 +22,37 @@ class GameEntry:
         last_played: Optional[str] = None,
         is_favorite: bool = False,
         launch_args: str = "",
+        is_downloading: bool = False,
+        download_progress: float = 0.0,
+        download_speed: str = "0 B/s",
+        download_eta: str = "--",
+        download_status: str = "Idle",
+        download_dir: str = "",
+        torrent_source: str = "",
+        needs_installation: bool = False,
+        installer_path: str = "",
     ):
         self.id = game_id or str(uuid.uuid4())
         self.name = name
         self.exe_path = exe_path
-        self.process_name = (process_name or os.path.basename(exe_path)).lower()
-        self.icon_path = icon_path or extract_icon_from_exe(exe_path, self.id)
+        self.process_name = (process_name or (os.path.basename(exe_path) if exe_path else name)).lower()
+        self.icon_path = icon_path or (extract_icon_from_exe(exe_path, self.id) if exe_path else None)
         self.playtime = float(playtime)
         self.last_played = last_played or "Never"
         self.is_favorite = is_favorite
         self.launch_args = launch_args
         self.is_running = False
+
+        # Download properties
+        self.is_downloading = is_downloading
+        self.download_progress = download_progress
+        self.download_speed = download_speed
+        self.download_eta = download_eta
+        self.download_status = download_status
+        self.download_dir = download_dir
+        self.torrent_source = torrent_source
+        self.needs_installation = needs_installation
+        self.installer_path = installer_path
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +65,15 @@ class GameEntry:
             "last_played": self.last_played,
             "is_favorite": self.is_favorite,
             "launch_args": self.launch_args,
+            "is_downloading": self.is_downloading,
+            "download_progress": self.download_progress,
+            "download_speed": self.download_speed,
+            "download_eta": self.download_eta,
+            "download_status": self.download_status,
+            "download_dir": self.download_dir,
+            "torrent_source": self.torrent_source,
+            "needs_installation": self.needs_installation,
+            "installer_path": self.installer_path,
         }
 
     @classmethod
@@ -59,6 +88,15 @@ class GameEntry:
             last_played=data.get("last_played", "Never"),
             is_favorite=data.get("is_favorite", False),
             launch_args=data.get("launch_args", ""),
+            is_downloading=data.get("is_downloading", False),
+            download_progress=data.get("download_progress", 0.0),
+            download_speed=data.get("download_speed", "0 B/s"),
+            download_eta=data.get("download_eta", "--"),
+            download_status=data.get("download_status", "Idle"),
+            download_dir=data.get("download_dir", ""),
+            torrent_source=data.get("torrent_source", ""),
+            needs_installation=data.get("needs_installation", False),
+            installer_path=data.get("installer_path", ""),
         )
 
     def formatted_playtime(self, verbose: bool = False) -> str:
