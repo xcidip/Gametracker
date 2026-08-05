@@ -54,6 +54,8 @@ def build_executable():
         "--hidden-import", "win32gui",
         "--hidden-import", "win32api",
         "--hidden-import", "win32con",
+        "--hidden-import", "torrent_manager",
+        "--hidden-import", "ui.torrent_dialog",
         str(main_py)
     ]
 

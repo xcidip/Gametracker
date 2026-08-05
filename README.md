@@ -1,11 +1,12 @@
 # 🎮 GameTracker - App & Game Playtime Tracker
 
-A modern Python desktop application that tracks playtime for games and applications in real time, extracts native high-resolution executable icons, provides 1-click running app detection, and runs silently in the Windows system tray.
+A modern Python desktop application that tracks playtime for games and applications in real time, extracts native high-resolution executable icons, provides 1-click running app detection, downloads games via built-in CLI Torrent engine, and runs silently in the Windows system tray.
 
 ---
 
 ## ✨ Features
 
+- **📥 Background Torrent & Magnet Downloader**: Built-in Torrent CLI engine (`aria2c`) that downloads games from magnet links or `.torrent` files in the background, displaying live progress bars, speed, and ETA right inside your game library cards!
 - **⚡ Active App Detector**: Scans running Windows processes and open windows, allowing you to add any application to your library with 1 click.
 - **🎨 Native Executable Icon Extraction**: Pulls high-resolution icons directly from `.exe` files using 64-bit Win32 C APIs (`PrivateExtractIconsW` & `ExtractIconExW`) and converts them into crisp PNG images.
 - **⏱️ Real-Time Playtime Tracking**: Monitors active processes with a lightweight background thread and updates total playtime down to the second.
@@ -61,13 +62,15 @@ Gametracker/
 ├── database.py            # Persistence layer (JSON library storage & import/export)
 ├── tracker.py             # Background process monitoring thread
 ├── icon_extractor.py      # Win32 C API icon extraction & fallback generator
+├── torrent_manager.py     # Background CLI torrent downloading engine (aria2c)
 ├── startup_manager.py     # Windows Registry startup key integration
 ├── build_exe.py           # Automated PyInstaller packaging script
 ├── build.bat              # 1-Click batch build launcher
 ├── ui/
 │   ├── main_window.py     # Main application window & system tray logic
-│   ├── game_card.py       # Library grid card component
+│   ├── game_card.py       # Library grid card component with torrent progress bars
 │   ├── detector_dialog.py # Active app scanner dialog
+│   ├── torrent_dialog.py  # Magnet link & .torrent file downloader modal
 │   ├── add_game_dialog.py # Custom .exe file picker dialog
 │   ├── stats_view.py      # Playtime analytics & leaderboard view
 │   └── styles.py          # Dark theme QSS stylesheet

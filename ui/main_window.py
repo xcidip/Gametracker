@@ -17,10 +17,12 @@ from PyQt6.QtWidgets import (
 from database import DatabaseManager, GameEntry
 from tracker import TimeTrackerThread
 from startup_manager import is_startup_enabled, set_startup_enabled
+from torrent_manager import ensure_aria2_installed, TorrentDownloadWorker, launch_elevated_installer, InstallerMonitorWorker
 from ui.styles import MAIN_STYLE
 from ui.game_card import GameCardWidget
 from ui.detector_dialog import RunningAppDetectorDialog
 from ui.add_game_dialog import AddGameDialog
+from ui.torrent_dialog import TorrentDownloadDialog
 from ui.stats_view import StatsViewWidget
 
 logger = logging.getLogger("MainWindow")
@@ -34,6 +36,7 @@ class MainWindow(QMainWindow):
         self.db_manager = db_manager
         self.tracker_thread = tracker_thread
         self.is_force_quitting = False
+        self.download_workers: Dict[str, TorrentDownloadWorker] = {}
 
         self.setWindowTitle("Game & App Playtime Tracker")
         self.resize(1100, 720)
@@ -97,6 +100,11 @@ class MainWindow(QMainWindow):
         self.btn_add_exe.setObjectName("PrimaryButton")
         self.btn_add_exe.clicked.connect(self.open_add_game_dialog)
         sb_layout.addWidget(self.btn_add_exe)
+
+        self.btn_torrent = QPushButton("📥 Download Torrent / Magnet")
+        self.btn_torrent.setObjectName("SecondaryButton")
+        self.btn_torrent.clicked.connect(self.open_torrent_dialog)
+        sb_layout.addWidget(self.btn_torrent)
 
         sb_layout.addSpacing(10)
 
@@ -247,6 +255,8 @@ class MainWindow(QMainWindow):
             card.launch_requested.connect(self.launch_game)
             card.remove_requested.connect(self.remove_game)
             card.edit_requested.connect(self.edit_game)
+            card.cancel_download_requested.connect(self.cancel_torrent_download)
+            card.install_requested.connect(self.run_game_installer)
 
             row = idx // columns
             col = idx % columns
@@ -298,16 +308,19 @@ class MainWindow(QMainWindow):
 
     def launch_game(self, game_id: str):
         game = self.db_manager.get_game_by_id(game_id)
-        if not game or not game.exe_path:
-            QMessageBox.warning(self, "Cannot Launch", "Executable path is not configured for this app.")
+        if not game:
             return
 
-        if not os.path.exists(game.exe_path):
-            QMessageBox.warning(self, "File Not Found", f"Executable does not exist:\n{game.exe_path}")
+        if game.needs_installation:
+            self.run_game_installer(game_id)
             return
 
+        if not game.exe_path or not os.path.exists(game.exe_path):
+            QMessageBox.warning(self, "File Not Found", f"Executable path does not exist:\n{game.exe_path}")
+            return
+
+        cwd = os.path.dirname(game.exe_path)
         try:
-            cwd = os.path.dirname(game.exe_path)
             cmd = [game.exe_path]
             if game.launch_args:
                 cmd.extend(game.launch_args.split())
@@ -315,6 +328,25 @@ class MainWindow(QMainWindow):
             subprocess.Popen(cmd, cwd=cwd)
             logger.info(f"Launched game executable: {cmd}")
             self.on_game_started(game.id, game.name)
+        except OSError as e:
+            # Handle WinError 740: The requested operation requires elevation
+            if getattr(e, 'winerror', None) == 740 or "elevation" in str(e).lower():
+                logger.info(f"WinError 740 caught, attempting elevated ShellExecute 'runas' for {game.exe_path}")
+                import ctypes
+                ret = ctypes.windll.shell32.ShellExecuteW(
+                    None,
+                    "runas",
+                    str(game.exe_path),
+                    str(game.launch_args) if game.launch_args else None,
+                    str(cwd),
+                    1
+                )
+                if ret > 32:
+                    self.on_game_started(game.id, game.name)
+                else:
+                    QMessageBox.critical(self, "Elevation Error", f"Failed to launch elevated process (error code {ret}).")
+            else:
+                QMessageBox.critical(self, "Launch Error", f"Failed to launch application:\n{e}")
         except Exception as e:
             QMessageBox.critical(self, "Launch Error", f"Failed to launch application:\n{e}")
 
@@ -463,7 +495,265 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "Error", "Failed to update Windows Startup registry key.")
 
+    def open_torrent_dialog(self):
+        dialog = TorrentDownloadDialog(parent=self)
+        dialog.torrent_started.connect(self.start_torrent_download)
+        dialog.exec()
+
+    def start_torrent_download(self, torrent_info: dict):
+        game_name = torrent_info["name"]
+        torrent_source = torrent_info["torrent_source"]
+        download_dir = torrent_info["download_dir"]
+
+        # Ensure aria2 CLI is installed/available
+        aria2_bin = ensure_aria2_installed()
+
+        # Create or update game entry in library
+        game = self.db_manager.add_game(
+            name=game_name,
+            exe_path="",
+            process_name=game_name.lower().replace(" ", ""),
+            icon_path=None
+        )
+        game.is_downloading = True
+        game.download_progress = 0.0
+        game.download_speed = "Connecting..."
+        game.download_status = "Downloading"
+        game.download_dir = download_dir
+        game.torrent_source = torrent_source
+        self.db_manager.save()
+
+        # Refresh grid so downloading card shows immediately
+        self.reload_library_grid()
+
+        # Start background worker thread
+        worker = TorrentDownloadWorker(
+            game_id=game.id,
+            game_name=game.name,
+            torrent_source=torrent_source,
+            download_dir=download_dir,
+            aria2_path=aria2_bin
+        )
+        worker.progress_updated.connect(self.on_torrent_progress)
+        worker.download_completed.connect(self.on_torrent_completed)
+        worker.download_failed.connect(self.on_torrent_failed)
+        
+        self.download_workers[game.id] = worker
+        worker.start()
+
+        QMessageBox.information(
+            self,
+            "Download Started",
+            f"'{game_name}' has started downloading in the background!\nDestination: {download_dir}"
+        )
+
+    def on_torrent_progress(self, game_id: str, progress: float, speed: str, eta: str, status: str):
+        game = self.db_manager.get_game_by_id(game_id)
+        if game:
+            game.is_downloading = (status != "Completed" and status != "Cancelled")
+            game.download_progress = progress
+            game.download_speed = speed
+            game.download_eta = eta
+            game.download_status = status
+
+        if game_id in self.cards:
+            self.cards[game_id].update_download_progress(progress, speed, eta, status)
+
+    def on_torrent_completed(self, game_id: str, game_name: str, download_dir: str):
+        game = self.db_manager.get_game_by_id(game_id)
+        installer_found = ""
+
+        if game:
+            game.is_downloading = False
+            game.download_progress = 100.0
+            game.download_status = "Completed"
+
+            # Auto scan downloaded folder for setup/installer executable
+            if os.path.exists(download_dir):
+                # Prioritize setup.exe or installer.exe
+                for root, _, files in os.walk(download_dir):
+                    for f in files:
+                        f_lower = f.lower()
+                        if f_lower.endswith(".exe") and ("setup" in f_lower or "install" in f_lower):
+                            installer_found = os.path.join(root, f)
+                            break
+                    if installer_found:
+                        break
+
+                # Fallback: any .exe in download folder
+                if not installer_found:
+                    for root, _, files in os.walk(download_dir):
+                        for f in files:
+                            if f.lower().endswith(".exe") and not f.lower().startswith("uninstall"):
+                                installer_found = os.path.join(root, f)
+                                break
+                        if installer_found:
+                            break
+
+            if installer_found:
+                game.needs_installation = True
+                game.installer_path = installer_found
+                game.exe_path = installer_found
+
+            self.db_manager.save()
+
+        if game_id in self.download_workers:
+            del self.download_workers[game_id]
+
+        self.reload_library_grid()
+
+        if installer_found:
+            reply = QMessageBox.question(
+                self,
+                "Download Completed! 🎉",
+                f"'{game_name}' download finished successfully!\nInstaller found:\n{installer_found}\n\nWould you like to run the elevated setup installer now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.run_game_installer(game_id)
+        else:
+            QMessageBox.information(
+                self,
+                "Download Completed! 🎉",
+                f"'{game_name}' has finished downloading successfully!\nFolder: {download_dir}"
+            )
+
+    def run_game_installer(self, game_id: str):
+        game = self.db_manager.get_game_by_id(game_id)
+        if not game or not game.installer_path or not os.path.exists(game.installer_path):
+            QMessageBox.warning(self, "Installer Not Found", "Installer executable path does not exist.")
+            return
+
+        # 1. Launch installer with Elevated Administrator Privileges (UAC prompt)
+        success = launch_elevated_installer(game.installer_path)
+        if not success:
+            QMessageBox.warning(self, "Launch Error", f"Failed to launch elevated installer:\n{game.installer_path}")
+            return
+
+        logger.info(f"Launched elevated installer for {game.name}: {game.installer_path}")
+
+        # 2. Monitor installer in background thread
+        monitor_worker = InstallerMonitorWorker(game.id, game.name, game.installer_path)
+        monitor_worker.installer_finished.connect(self.on_installer_finished)
+        self.download_workers[f"inst_{game.id}"] = monitor_worker
+        monitor_worker.start()
+
+        QMessageBox.information(
+            self,
+            "Installer Started",
+            f"The setup installer for '{game.name}' has been launched with Administrator privileges.\n\nWhen you finish the installation wizard, GameTracker will ask you to select the installed game executable."
+        )
+
+    def on_installer_finished(self, game_id: str, game_name: str):
+        worker_key = f"inst_{game_id}"
+        if worker_key in self.download_workers:
+            del self.download_workers[worker_key]
+
+        # Restore application window to front so popup is visible
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+
+        self.prompt_select_installed_exe(game_id)
+
+    def prompt_select_installed_exe(self, game_id: str):
+        import shutil
+        from PyQt6.QtWidgets import QFileDialog
+        from icon_extractor import extract_icon_from_exe
+
+        game = self.db_manager.get_game_by_id(game_id)
+        if not game:
+            return
+
+        # 1. Popup to select installed game executable (.exe)
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            f"Select Installed Main Executable (.exe) for '{game.name}'",
+            "C:\\Program Files",
+            "Executable Files (*.exe);;All Files (*.*)"
+        )
+
+        download_dir_to_clean = game.download_dir
+
+        if file_path and os.path.exists(file_path):
+            # Update library entry with installed game executable & icon
+            game.exe_path = file_path
+            game.process_name = os.path.basename(file_path).lower()
+            game.needs_installation = False
+            game.installer_path = ""
+            game.icon_path = extract_icon_from_exe(file_path, game.id)
+            self.db_manager.save()
+            self.reload_library_grid()
+
+            QMessageBox.information(
+                self,
+                "Game Added to Library! 🎮",
+                f"'{game.name}' is now added to your library and ready to play!\nExecutable: {file_path}"
+            )
+
+            # 2. Ask user if they want to delete the downloaded torrent folder
+            if download_dir_to_clean and os.path.exists(download_dir_to_clean):
+                reply = QMessageBox.question(
+                    self,
+                    "Clean Up Downloaded Torrent Folder",
+                    f"Would you like to delete the temporary downloaded torrent folder to free up disk space?\n\nFolder Path:\n{download_dir_to_clean}",
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                if reply == QMessageBox.StandardButton.Yes:
+                    try:
+                        shutil.rmtree(download_dir_to_clean, ignore_errors=True)
+                        game.download_dir = ""
+                        self.db_manager.save()
+                        QMessageBox.information(self, "Cleaned Up", "Temporary downloaded torrent folder has been deleted.")
+                    except Exception as e:
+                        logger.error(f"Error deleting download directory {download_dir_to_clean}: {e}")
+        else:
+            QMessageBox.information(
+                self,
+                "Installation Pending",
+                f"No executable selected for '{game.name}'. You can click '🚀 RUN INSTALLER' or right-click the card to select the installed executable anytime."
+            )
+            self.reload_library_grid()
+
+    def on_torrent_failed(self, game_id: str, game_name: str, error_msg: str):
+        game = self.db_manager.get_game_by_id(game_id)
+        if game:
+            game.is_downloading = False
+            game.download_status = "Failed"
+            self.db_manager.save()
+
+        if game_id in self.download_workers:
+            del self.download_workers[game_id]
+
+        self.reload_library_grid()
+        QMessageBox.warning(self, "Download Failed", f"Torrent download for '{game_name}' failed:\n{error_msg}")
+
+    def cancel_torrent_download(self, game_id: str):
+        game = self.db_manager.get_game_by_id(game_id)
+        if not game:
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Cancel Download",
+            f"Are you sure you want to cancel the download for '{game.name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            if game_id in self.download_workers:
+                worker = self.download_workers[game_id]
+                worker.cancel()
+                del self.download_workers[game_id]
+
+            game.is_downloading = False
+            game.download_status = "Cancelled"
+            self.db_manager.save()
+            self.reload_library_grid()
+
     def force_quit(self):
+        # Cancel all active torrent download workers on quit
+        for worker in self.download_workers.values():
+            worker.cancel()
         self.is_force_quitting = True
         self.close()
 
