@@ -6,7 +6,7 @@ A modern Python desktop application that tracks playtime for games and applicati
 
 ## ✨ Features
 
-- **📦 100% Single-File Executable**: Compiles into a single standalone `GameTracker.exe`.
+- **💿 Windows Setup Installer (`GameTracker_Setup.exe`)**: Professional Windows installer wizard that lets users choose any custom installation directory and optionally create a **Desktop Shortcut**.
 - **📥 Background Torrent & Magnet Downloader**: Built-in Torrent CLI engine (`aria2c`) that downloads games from magnet links or `.torrent` files in the background, displaying live progress bars, speed, and ETA inside your game library cards.
 - **🚀 Elevated Installer & Exe Assignment**: Launches downloaded setup installers with Administrator privileges (`runas`), monitors installer completion, prompts to select the installed game `.exe`, and offers to delete the temporary torrent download folder to free up disk space.
 - **⏱️ Playtime Tracking (Finished Games Only)**: Monitors active processes in real time down to the second. Automatically excludes setup installers and active downloads from playtime tracking.
@@ -36,20 +36,20 @@ python main.py
 
 ---
 
-## 📦 Building Single Standalone Executable (.exe)
+## 📦 Building Windows Setup Installer (.exe)
 
-You can build a single standalone `GameTracker.exe` file that runs cleanly without requiring Python or any external `_internal` folder:
+You can build a standalone **`GameTracker_Setup.exe`** Windows Installer:
 
 ### Option A: Double-Click Batch File
 Double-click `build.bat` in Windows Explorer.
 
 ### Option B: Run Python Build Script
 ```bash
-python build_exe.py
+python build_installer.py
 ```
 
-The single standalone executable will be created at:
-`dist\GameTracker.exe`
+The resulting Windows Setup Installer will be generated at:
+`dist_installer\GameTracker_Setup.exe`
 
 ---
 
@@ -64,7 +64,9 @@ Gametracker/
 ├── icon_extractor.py      # Win32 C API icon extraction & fallback generator
 ├── torrent_manager.py     # Background CLI torrent engine & installer monitor
 ├── startup_manager.py     # Windows Registry startup key integration
-├── build_exe.py           # Single-file PyInstaller packaging script (--onefile)
+├── installer.iss          # Inno Setup Windows installer configuration script
+├── build_installer.py     # Automated Windows setup installer build script
+├── build_exe.py           # Fast PyInstaller distribution packager
 ├── build.bat              # 1-Click batch build launcher
 ├── ui/
 │   ├── main_window.py     # Main application window & system tray logic

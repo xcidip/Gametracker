@@ -1,13 +1,25 @@
+# Python bytecode & cache
 __pycache__/
 *.py[cod]
 *$py.class
+*.so
 
-# PyInstaller build outputs
+# PyInstaller & Installer build outputs
 build/
 dist/
+dist_installer/
 *.spec
 
-# Local data & environment
+# Temporary installer downloads
+inno_*.exe
+
+# Local environments & IDEs
 .venv/
 venv/
+ENV/
+.vscode/
+.idea/
+
+# Windows temp & logs
 *.tmp
+*.log
