@@ -102,7 +102,7 @@ class MainWindow(QMainWindow):
         self.btn_nav_debug.clicked.connect(lambda: self.switch_view(2))
         sb_layout.addWidget(self.btn_nav_debug)
 
-        self.btn_nav_stores = QPushButton("🌐 Stores & Import")
+        self.btn_nav_stores = QPushButton("🌐 Stores, Import")
         self.btn_nav_stores.setObjectName("NavButton")
         self.btn_nav_stores.setCheckable(True)
         self.btn_nav_stores.clicked.connect(lambda: self.switch_view(3))
@@ -251,10 +251,13 @@ class MainWindow(QMainWindow):
 
     def reload_library_grid(self):
         # Clear existing card widgets
-        for i in reversed(range(self.grid_layout.count())):
-            item = self.grid_layout.itemAt(i)
-            if item and item.widget():
-                item.widget().deleteLater()
+        while self.grid_layout.count():
+            item = self.grid_layout.takeAt(0)
+            if item:
+                widget = item.widget()
+                if widget:
+                    widget.setParent(None)
+                    widget.deleteLater()
 
         self.cards.clear()
 
