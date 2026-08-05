@@ -29,8 +29,8 @@ class GameCardWidget(QFrame):
         super().__init__(parent)
         self.game = game
         self.setObjectName("GameCard")
-        self.setMinimumSize(QSize(190, 195))
-        self.setMaximumSize(QSize(260, 225))
+        self.setMinimumSize(QSize(190, 155))
+        self.setMaximumSize(QSize(260, 185))
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         self.init_ui()
@@ -40,11 +40,14 @@ class GameCardWidget(QFrame):
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(4)
 
-        # Top Header: Status badge & options menu button
+        # Top Header: Action button (Launch) & options menu button
         top_layout = QHBoxLayout()
-        self.status_label = QLabel()
-        self.update_status_badge(self.game.is_running)
-        top_layout.addWidget(self.status_label)
+        self.btn_action = QPushButton()
+        self.btn_action.setObjectName("PrimaryButton")
+        self.btn_action.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.update_action_button()
+        self.btn_action.clicked.connect(self.on_action_clicked)
+        top_layout.addWidget(self.btn_action)
 
         top_layout.addStretch()
 
@@ -107,13 +110,6 @@ class GameCardWidget(QFrame):
 
         self.update_card_display()
 
-        # Action Button (Launch / Install / Download / Running)
-        self.btn_action = QPushButton()
-        self.btn_action.setObjectName("PrimaryButton")
-        self.update_action_button()
-        self.btn_action.clicked.connect(self.on_action_clicked)
-        layout.addWidget(self.btn_action)
-
     def load_icon(self):
         icon_path = self.game.icon_path
         if icon_path and os.path.exists(icon_path):
@@ -129,34 +125,21 @@ class GameCardWidget(QFrame):
 
     def update_card_display(self):
         if self.game.is_downloading:
-            self.status_label.setText("⏬ DOWNLOADING")
-            self.status_label.setStyleSheet("background-color: #00CEC9; color: #0F111A; border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: bold;")
-            
             speed_txt = f"{self.game.download_speed} • ETA: {self.game.download_eta}" if self.game.download_speed else "Downloading..."
             self.playtime_label.setText(f"{self.game.download_progress:.1f}%  ({speed_txt})")
-            
             self.progress_bar.setValue(int(self.game.download_progress))
             self.progress_bar.show()
         elif self.game.needs_installation:
             self.progress_bar.hide()
-            self.status_label.setText("📦 READY TO INSTALL")
-            self.status_label.setStyleSheet("background-color: #F1C40F; color: #0F111A; border-radius: 6px; padding: 3px 8px; font-size: 11px; font-weight: bold;")
             self.playtime_label.setText("Downloaded • Setup Ready")
         else:
             self.progress_bar.hide()
-            self.update_status_badge(self.game.is_running)
             self.playtime_label.setText(f"Playtime: {self.game.formatted_playtime()}")
+        
+        self.update_action_button()
 
     def update_status_badge(self, is_running: bool):
-        if self.game.is_downloading or self.game.needs_installation:
-            return
-        if is_running:
-            self.status_label.setText("● PLAYING")
-            self.status_label.setObjectName("StatusBadgeRunning")
-        else:
-            self.status_label.setText("OFFLINE")
-            self.status_label.setObjectName("StatusBadgeIdle")
-        self.status_label.setStyle(self.status_label.style())
+        self.update_action_button()
 
     def update_action_button(self):
         if self.game.is_downloading:

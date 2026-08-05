@@ -155,6 +155,39 @@ QFrame#GameCard:hover {
     font-weight: 600;
 }
 
+QFrame#GameCard QPushButton#PrimaryButton {
+    background-color: #6C5CE7;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+QFrame#GameCard QPushButton#PrimaryButton:hover {
+    background-color: #5B4BC4;
+}
+
+QFrame#GameCard QPushButton#PrimaryButton:pressed {
+    background-color: #4A3BB3;
+}
+
+QFrame#GameCard QPushButton#SecondaryButton {
+    background-color: #1E2235;
+    color: #00CEC9;
+    border: 1px solid #00CEC9;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-weight: bold;
+    font-size: 11px;
+}
+
+QFrame#GameCard QPushButton#SecondaryButton:hover {
+    background-color: #00CEC9;
+    color: #0F111A;
+}
+
 #StatusBadgeRunning {
     background-color: #00B894;
     color: #FFFFFF;
