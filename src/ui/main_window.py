@@ -177,21 +177,23 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(top_bar)
 
-        # Now Playing Active Banner
+        # Now Playing Active Banner (Compact & Sleek)
         self.banner_frame = QFrame()
+        self.banner_frame.setFixedHeight(26)
         self.banner_frame.setStyleSheet("""
             QFrame {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6C5CE7, stop:1 #00CEC9);
                 color: white;
-                padding: 10px 18px;
+                border: none;
             }
         """)
         self.banner_frame.hide()
         banner_layout = QHBoxLayout(self.banner_frame)
-        banner_layout.setContentsMargins(10, 4, 10, 4)
+        banner_layout.setContentsMargins(14, 0, 14, 0)
+        banner_layout.setSpacing(6)
 
-        self.banner_label = QLabel("NOW PLAYING: None")
-        self.banner_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #FFFFFF;")
+        self.banner_label = QLabel("🎮 NOW PLAYING: None")
+        self.banner_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #FFFFFF;")
         banner_layout.addWidget(self.banner_label)
 
         content_layout.addWidget(self.banner_frame)
@@ -305,35 +307,49 @@ class MainWindow(QMainWindow):
         if game_id in self.cards:
             self.cards[game_id].update_playtime_display(total_seconds)
 
-    def on_game_started(self, game_id: str, game_name: str):
-        self.banner_label.setText(f"🎮 NOW PLAYING: {game_name}")
-        self.banner_frame.show()
-        if game_id in self.cards:
-            self.cards[game_id].update_status_badge(True)
-            self.cards[game_id].update_action_button()
+    def update_now_playing_banner(self):
+        """Updates the top banner to list all currently running games."""
+        running_games = [g for g in self.db_manager.get_all_games() if g.is_running]
+        # Deduplicate running game names to prevent duplicates in banner
+        unique_names = list(dict.fromkeys(g.name for g in running_games))
 
-    def on_game_stopped(self, game_id: str, game_name: str, session_seconds: float):
-        self.banner_frame.hide()
-        if game_id in self.cards:
-            self.cards[game_id].update_status_badge(False)
-            self.cards[game_id].update_action_button()
-
-    def on_running_status_changed(self, status_dict: dict):
-        any_running = False
-        for game_id, is_running in status_dict.items():
-            if game_id in self.cards:
-                self.cards[game_id].update_status_badge(is_running)
-                self.cards[game_id].update_action_button()
-            if is_running:
-                any_running = True
-                game = self.db_manager.get_game_by_id(game_id)
-                if game:
-                    self.banner_label.setText(f"🎮 NOW PLAYING: {game.name}")
-
-        if any_running:
+        if unique_names:
+            game_names = ", ".join(unique_names)
+            if len(unique_names) > 1:
+                self.banner_label.setText(f"🎮 NOW PLAYING ({len(unique_names)}): {game_names}")
+            else:
+                self.banner_label.setText(f"🎮 NOW PLAYING: {game_names}")
             self.banner_frame.show()
         else:
             self.banner_frame.hide()
+
+    def on_game_started(self, game_id: str, game_name: str):
+        game = self.db_manager.get_game_by_id(game_id)
+        if game:
+            game.is_running = True
+        if game_id in self.cards:
+            self.cards[game_id].update_status_badge(True)
+            self.cards[game_id].update_action_button()
+        self.update_now_playing_banner()
+
+    def on_game_stopped(self, game_id: str, game_name: str, session_seconds: float):
+        game = self.db_manager.get_game_by_id(game_id)
+        if game:
+            game.is_running = False
+        if game_id in self.cards:
+            self.cards[game_id].update_status_badge(False)
+            self.cards[game_id].update_action_button()
+        self.update_now_playing_banner()
+
+    def on_running_status_changed(self, status_dict: dict):
+        for game_id, is_running in status_dict.items():
+            game = self.db_manager.get_game_by_id(game_id)
+            if game:
+                game.is_running = is_running
+            if game_id in self.cards:
+                self.cards[game_id].update_status_badge(is_running)
+                self.cards[game_id].update_action_button()
+        self.update_now_playing_banner()
 
     def launch_game(self, game_id: str):
         game = self.db_manager.get_game_by_id(game_id)
