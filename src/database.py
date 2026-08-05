@@ -210,6 +210,15 @@ class DatabaseManager:
             del self.games[game_id]
             self.save()
 
+    def toggle_favorite(self, game_id: str) -> bool:
+        """Toggles the favorite status of a game entry."""
+        game = self.games.get(game_id)
+        if game:
+            game.is_favorite = not game.is_favorite
+            self.save()
+            return game.is_favorite
+        return False
+
     def update_playtime(self, game_id: str, elapsed_seconds: float):
         """Adds elapsed seconds to game playtime and updates last played timestamp."""
         game = self.games.get(game_id)

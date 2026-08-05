@@ -23,21 +23,22 @@ class GameCardWidget(QFrame):
     edit_requested = pyqtSignal(str)     # game_id
     cancel_download_requested = pyqtSignal(str) # game_id
     install_requested = pyqtSignal(str)  # game_id
+    favorite_toggled = pyqtSignal(str)   # game_id
 
     def __init__(self, game: GameEntry, parent=None):
         super().__init__(parent)
         self.game = game
         self.setObjectName("GameCard")
-        self.setMinimumSize(QSize(220, 270))
-        self.setMaximumSize(QSize(280, 310))
+        self.setMinimumSize(QSize(190, 195))
+        self.setMaximumSize(QSize(260, 225))
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 14, 14, 14)
-        layout.setSpacing(8)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(4)
 
         # Top Header: Status badge & options menu button
         top_layout = QHBoxLayout()
@@ -47,9 +48,16 @@ class GameCardWidget(QFrame):
 
         top_layout.addStretch()
 
+        self.btn_favorite = QPushButton()
+        self.btn_favorite.setFixedSize(24, 24)
+        self.btn_favorite.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_favorite.clicked.connect(self.on_favorite_clicked)
+        self.update_favorite_button()
+        top_layout.addWidget(self.btn_favorite)
+
         self.btn_menu = QPushButton("⋮")
-        self.btn_menu.setFixedSize(28, 28)
-        self.btn_menu.setStyleSheet("background: transparent; color: #8E9BB0; font-size: 16px; border: none;")
+        self.btn_menu.setFixedSize(24, 24)
+        self.btn_menu.setStyleSheet("background: transparent; color: #8E9BB0; font-size: 15px; border: none;")
         self.btn_menu.clicked.connect(self.show_context_menu)
         top_layout.addWidget(self.btn_menu)
 
@@ -59,7 +67,7 @@ class GameCardWidget(QFrame):
         icon_layout = QHBoxLayout()
         icon_layout.addStretch()
         self.icon_label = QLabel()
-        self.icon_label.setFixedSize(68, 68)
+        self.icon_label.setFixedSize(50, 50)
         self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.load_icon()
         icon_layout.addWidget(self.icon_label)
@@ -81,25 +89,23 @@ class GameCardWidget(QFrame):
 
         # Download Progress Bar (visible if downloading)
         self.progress_bar = QProgressBar()
-        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setFixedHeight(6)
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setStyleSheet("""
             QProgressBar {
                 background-color: #141724;
                 border: 1px solid #2B304A;
-                border-radius: 4px;
+                border-radius: 3px;
             }
             QProgressBar::chunk {
                 background-color: #00CEC9;
-                border-radius: 3px;
+                border-radius: 2px;
             }
         """)
         self.progress_bar.hide()
         layout.addWidget(self.progress_bar)
 
         self.update_card_display()
-
-        layout.addStretch()
 
         # Action Button (Launch / Install / Download / Running)
         self.btn_action = QPushButton()
@@ -113,13 +119,13 @@ class GameCardWidget(QFrame):
         if icon_path and os.path.exists(icon_path):
             pixmap = QPixmap(icon_path)
             if not pixmap.isNull():
-                scaled = pixmap.scaled(60, 60, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                scaled = pixmap.scaled(44, 44, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
                 self.icon_label.setPixmap(scaled)
                 return
         # Fallback text icon
         fallback_char = "📦" if self.game.needs_installation else "📥" if self.game.is_downloading else "🎮"
         self.icon_label.setText(fallback_char)
-        self.icon_label.setStyleSheet("font-size: 34px;")
+        self.icon_label.setStyleSheet("font-size: 28px;")
 
     def update_card_display(self):
         if self.game.is_downloading:
@@ -199,6 +205,39 @@ class GameCardWidget(QFrame):
         else:
             self.launch_requested.emit(self.game.id)
 
+    def update_favorite_button(self):
+        if self.game.is_favorite:
+            self.btn_favorite.setText("★")
+            self.btn_favorite.setToolTip("Remove from Favorites")
+            self.btn_favorite.setStyleSheet("""
+                QPushButton {
+                    background: transparent;
+                    color: #FFD700;
+                    font-size: 18px;
+                    border: none;
+                }
+                QPushButton:hover {
+                    color: #FFE566;
+                }
+            """)
+        else:
+            self.btn_favorite.setText("☆")
+            self.btn_favorite.setToolTip("Add to Favorites")
+            self.btn_favorite.setStyleSheet("""
+                QPushButton {
+                    background: transparent;
+                    color: #8E9BB0;
+                    font-size: 18px;
+                    border: none;
+                }
+                QPushButton:hover {
+                    color: #FFD700;
+                }
+            """)
+
+    def on_favorite_clicked(self):
+        self.favorite_toggled.emit(self.game.id)
+
     def show_context_menu(self):
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -217,6 +256,12 @@ class GameCardWidget(QFrame):
                 background-color: #6C5CE7;
             }
         """)
+
+        fav_label = "⭐ Remove from Favorites" if self.game.is_favorite else "★ Add to Favorites"
+        action_favorite = QAction(fav_label, self)
+        action_favorite.triggered.connect(self.on_favorite_clicked)
+        menu.addAction(action_favorite)
+        menu.addSeparator()
 
         if self.game.is_downloading:
             action_folder = QAction("📂 Open Download Folder", self)

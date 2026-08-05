@@ -141,7 +141,7 @@ QFrame#GameCard:hover {
 }
 
 #GameTitle {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: bold;
     color: #FFFFFF;
 }
@@ -150,8 +150,8 @@ QFrame#GameCard:hover {
     background-color: #141724;
     color: #00CEC9;
     border-radius: 6px;
-    padding: 4px 8px;
-    font-size: 12px;
+    padding: 3px 6px;
+    font-size: 11px;
     font-weight: 600;
 }
 

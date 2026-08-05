@@ -71,7 +71,7 @@ class MainWindow(QMainWindow):
         sb_layout.setSpacing(10)
 
         # Logo / App Title
-        app_title = QLabel("🎮 GAME TRACKER")
+        app_title = QLabel("GAME TRACKER")
         app_title.setObjectName("SidebarTitle")
         sb_layout.addWidget(app_title)
 
@@ -115,7 +115,7 @@ class MainWindow(QMainWindow):
         self.btn_add_exe.clicked.connect(self.open_add_game_dialog)
         sb_layout.addWidget(self.btn_add_exe)
 
-        self.btn_torrent = QPushButton("📥 Download Torrent / Magnet")
+        self.btn_torrent = QPushButton("Download Torrent/Magnet")
         self.btn_torrent.setObjectName("SecondaryButton")
         self.btn_torrent.clicked.connect(self.open_torrent_dialog)
         sb_layout.addWidget(self.btn_torrent)
@@ -123,7 +123,7 @@ class MainWindow(QMainWindow):
         sb_layout.addSpacing(10)
 
         # File Storage / Backup Actions
-        self.btn_export = QPushButton("💾 Save / Export File")
+        self.btn_export = QPushButton("📂 Export data File")
         self.btn_export.setObjectName("SecondaryButton")
         self.btn_export.clicked.connect(self.export_data_file)
         sb_layout.addWidget(self.btn_export)
@@ -264,14 +264,22 @@ class MainWindow(QMainWindow):
         if query:
             games = [g for g in games if query in g.name.lower() or query in g.process_name.lower()]
 
-        # Sorting logic
+        # Sorting logic (Favorited games always pinned at the top)
         sort_idx = self.sort_combo.currentIndex()
         if sort_idx == 0:  # Playtime
-            games.sort(key=lambda g: g.playtime, reverse=True)
+            games.sort(key=lambda g: (not g.is_favorite, -g.playtime))
         elif sort_idx == 1:  # Name A-Z
-            games.sort(key=lambda g: g.name.lower())
+            games.sort(key=lambda g: (not g.is_favorite, g.name.lower()))
         elif sort_idx == 2:  # Recently played
-            games.sort(key=lambda g: g.last_played, reverse=True)
+            def _recent_key(g):
+                if not g.last_played or g.last_played == "Never":
+                    return (not g.is_favorite, 1, ())
+                try:
+                    parts = [int(p) for p in g.last_played.replace('-', ' ').replace(':', ' ').split()]
+                    return (not g.is_favorite, 0, tuple(-p for p in parts))
+                except Exception:
+                    return (not g.is_favorite, 1, ())
+            games.sort(key=_recent_key)
 
         if not games:
             empty_msg = QLabel("No games or apps found in library.\nClick '⚡ Detect Apps' or '＋ Add Custom .EXE' to get started!")
@@ -288,11 +296,16 @@ class MainWindow(QMainWindow):
             card.edit_requested.connect(self.edit_game)
             card.cancel_download_requested.connect(self.cancel_torrent_download)
             card.install_requested.connect(self.run_game_installer)
+            card.favorite_toggled.connect(self.toggle_favorite_game)
 
             row = idx // columns
             col = idx % columns
             self.grid_layout.addWidget(card, row, col)
             self.cards[game.id] = card
+
+    def toggle_favorite_game(self, game_id: str):
+        self.db_manager.toggle_favorite(game_id)
+        self.reload_library_grid()
 
     def filter_library(self):
         self.reload_library_grid()
