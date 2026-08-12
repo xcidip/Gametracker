@@ -33,6 +33,7 @@ class GameDetailViewWidget(QWidget):
     edit_requested = pyqtSignal(str)            # game_id
     remove_requested = pyqtSignal(str)          # game_id
     favorite_toggled = pyqtSignal(str)          # game_id
+    set_limit_requested = pyqtSignal(str)       # game_id
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -203,6 +204,26 @@ class GameDetailViewWidget(QWidget):
         self.btn_edit.clicked.connect(lambda: self.game and self.edit_requested.emit(self.game.id))
         secondary_actions.addWidget(self.btn_edit)
 
+        self.btn_limit = QPushButton("⏱️ Set Play Limit")
+        self.btn_limit.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.btn_limit.setStyleSheet("""
+            QPushButton {
+                background-color: #1E2235;
+                color: #FFFFFF;
+                border: 1px solid #2B304A;
+                border-radius: 8px;
+                padding: 6px 14px;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: #2B304A;
+                border-color: #00CEC9;
+            }
+        """)
+        self.btn_limit.clicked.connect(lambda: self.game and self.set_limit_requested.emit(self.game.id))
+        secondary_actions.addWidget(self.btn_limit)
+
         self.btn_remove = QPushButton("🗑️ Remove")
         self.btn_remove.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.btn_remove.setStyleSheet("""
@@ -240,21 +261,25 @@ class GameDetailViewWidget(QWidget):
         self.card_playtime = self._create_info_card("⏱️ TOTAL PLAY TIME", "--", "#6C5CE7")
         grid_layout.addWidget(self.card_playtime, 0, 0)
 
+        # Weekly Limit Card (Separate dedicated box)
+        self.card_limit = self._create_info_card("⏳ WEEKLY PLAY LIMIT", "No limit set", "#FF7675")
+        grid_layout.addWidget(self.card_limit, 0, 1)
+
         # File Location Card
         self.card_location = self._create_location_card("📁 FILE LOCATION", "--")
-        grid_layout.addWidget(self.card_location, 0, 1)
+        grid_layout.addWidget(self.card_location, 1, 0)
 
         # Process Name Card
         self.card_process = self._create_info_card("⚙️ PROCESS EXECUTABLE", "--", "#00CEC9")
-        grid_layout.addWidget(self.card_process, 1, 0)
+        grid_layout.addWidget(self.card_process, 1, 1)
 
         # Last Played Card
         self.card_last_played = self._create_info_card("📅 LAST PLAYED", "--", "#FDCB6E")
-        grid_layout.addWidget(self.card_last_played, 1, 1)
+        grid_layout.addWidget(self.card_last_played, 2, 0)
 
         # Launch Arguments Card
         self.card_launch_args = self._create_info_card("🚀 LAUNCH PARAMETERS", "None", "#A29BFE")
-        grid_layout.addWidget(self.card_launch_args, 2, 0, 1, 2)
+        grid_layout.addWidget(self.card_launch_args, 2, 1)
 
         layout.addLayout(grid_layout)
         layout.addStretch()
@@ -412,6 +437,11 @@ class GameDetailViewWidget(QWidget):
             self.lbl_status_badge.setStyleSheet("background-color: #00B894; color: #FFFFFF; border-radius: 6px; padding: 4px 10px; font-weight: bold; font-size: 12px;")
             self.btn_action.setText("● GAME IS RUNNING")
             self.btn_action.setEnabled(False)
+        elif self.game.is_limit_reached():
+            self.lbl_status_badge.setText("Playtime Limit Reached")
+            self.lbl_status_badge.setStyleSheet("background-color: #272C45; color: #FF7675; border: 1px solid #FF7675; border-radius: 6px; padding: 4px 10px; font-weight: bold; font-size: 12px;")
+            self.btn_action.setText("PLAYTIME REACHED")
+            self.btn_action.setEnabled(False)
         else:
             self.lbl_status_badge.setText("Ready to Play")
             self.lbl_status_badge.setStyleSheet("background-color: #1E2235; color: #00CEC9; border-radius: 6px; padding: 4px 10px; font-weight: bold; font-size: 12px;")
@@ -421,7 +451,21 @@ class GameDetailViewWidget(QWidget):
         # Update Info Cards
         val_playtime = self.card_playtime.findChild(QLabel, "CardValue")
         if val_playtime:
-            val_playtime.setText(format_playtime(self.game.playtime, verbose=True))
+            val_playtime.setText(self.game.formatted_playtime())
+
+        val_limit = self.card_limit.findChild(QLabel, "CardValue")
+        if val_limit:
+            if self.game.play_time_limit > 0:
+                wk_str = self.game.formatted_weekly_playtime()
+                limit_str = format_playtime(self.game.play_time_limit * 3600)
+                if self.game.is_limit_reached():
+                    val_limit.setText(f"{wk_str} / {limit_str}\n(Limit Reached)")
+                else:
+                    rem_seconds = max(0.0, (self.game.play_time_limit * 3600.0) - self.game.weekly_playtime)
+                    rem_str = format_playtime(rem_seconds)
+                    val_limit.setText(f"{wk_str} / {limit_str}\n({rem_str} remaining)")
+            else:
+                val_limit.setText("No limit set")
 
         loc_path = self.game.exe_path or self.game.download_dir or self.game.installer_path or "Not specified"
         self.lbl_location.setText(loc_path)
@@ -441,9 +485,7 @@ class GameDetailViewWidget(QWidget):
     def update_playtime_display(self, total_seconds: float):
         if self.game and not self.game.is_downloading:
             self.game.playtime = total_seconds
-            val_playtime = self.card_playtime.findChild(QLabel, "CardValue")
-            if val_playtime:
-                val_playtime.setText(format_playtime(total_seconds, verbose=True))
+            self.update_display()
 
     def copy_location_to_clipboard(self):
         path_text = self.lbl_location.text()
@@ -466,6 +508,13 @@ class GameDetailViewWidget(QWidget):
 
     def on_action_clicked(self):
         if not self.game:
+            return
+        if self.game.is_limit_reached():
+            QMessageBox.warning(
+                self,
+                "Playtime Limit Reached",
+                f"Weekly playtime limit of {self.game.play_time_limit:.1f} hrs reached for '{self.game.name}'.\nLimit resets on Monday."
+            )
             return
         if self.game.is_downloading:
             reply = QMessageBox.question(

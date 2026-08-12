@@ -36,6 +36,7 @@ def main():
 
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+    app.setOrganizationName(APP_NAME)
     app.setStyle("Fusion")
 
     # Set modern gaming application icon globally

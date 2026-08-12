@@ -30,7 +30,7 @@ COLOR_TEXT_MUTED = "#8E9BB0"
 COLOR_BORDER = "#2B304A"
 
 def format_playtime(seconds: float, verbose: bool = False) -> str:
-    """Formats seconds into human-readable string like '12h 45m' or '35s'."""
+    """Formats seconds into human-readable string like '12h', '45m', or '35s'."""
     seconds = int(max(0, seconds))
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
@@ -40,14 +40,19 @@ def format_playtime(seconds: float, verbose: bool = False) -> str:
         parts = []
         if hours > 0:
             parts.append(f"{hours} hour{'s' if hours != 1 else ''}")
-        if minutes > 0 or hours > 0:
+            if minutes > 0:
+                parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+        elif minutes > 0:
             parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
-        parts.append(f"{secs} second{'s' if secs != 1 else ''}")
+            if secs > 0:
+                parts.append(f"{secs} second{'s' if secs != 1 else ''}")
+        else:
+            parts.append(f"{secs} second{'s' if secs != 1 else ''}")
         return " ".join(parts)
 
     if hours > 0:
-        return f"{hours}h {minutes:02d}m"
+        return f"{hours}h"
     elif minutes > 0:
-        return f"{minutes}m {secs:02d}s"
+        return f"{minutes}m"
     else:
         return f"{secs}s"

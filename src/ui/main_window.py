@@ -10,7 +10,7 @@ project_root = Path(__file__).resolve().parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, QSettings
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -28,6 +28,7 @@ from src.ui.components.game_card import GameCardWidget
 from src.ui.dialogs.detector_dialog import RunningAppDetectorDialog
 from src.ui.dialogs.add_game_dialog import AddGameDialog
 from src.ui.dialogs.torrent_dialog import TorrentDownloadDialog
+from src.ui.dialogs.set_limit_dialog import SetLimitDialog
 from src.ui.views.stats_view import StatsViewWidget
 from src.ui.views.debug_view import DebugViewWidget
 from src.ui.views.launchers_view import LaunchersViewWidget
@@ -52,6 +53,7 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(create_app_icon())
         self.resize(1100, 720)
         self.setMinimumSize(900, 600)
+        self.restore_window_settings()
 
         # Apply dark theme style
         self.setStyleSheet(MAIN_STYLE)
@@ -229,6 +231,7 @@ class MainWindow(QMainWindow):
         self.detail_view.edit_requested.connect(self.edit_game)
         self.detail_view.remove_requested.connect(self.remove_game)
         self.detail_view.favorite_toggled.connect(self.toggle_favorite_game)
+        self.detail_view.set_limit_requested.connect(self.prompt_set_play_limit)
         self.stacked_widget.addWidget(self.detail_view)
 
         content_layout.addWidget(self.stacked_widget, stretch=1)
@@ -332,6 +335,7 @@ class MainWindow(QMainWindow):
             card.cancel_download_requested.connect(self.cancel_torrent_download)
             card.install_requested.connect(self.run_game_installer)
             card.favorite_toggled.connect(self.toggle_favorite_game)
+            card.set_limit_requested.connect(self.prompt_set_play_limit)
             card.card_clicked.connect(self.open_game_detail)
 
             row = idx // columns
@@ -412,9 +416,33 @@ class MainWindow(QMainWindow):
             self.detail_view.update_display()
         self.update_now_playing_banner()
 
+    def prompt_set_play_limit(self, game_id: str):
+        game = self.db_manager.get_game_by_id(game_id)
+        if not game:
+            return
+        dialog = SetLimitDialog(game, self)
+        dialog.limit_saved.connect(self.on_play_limit_saved)
+        dialog.exec()
+
+    def on_play_limit_saved(self, game_id: str, limit_hours: float):
+        self.db_manager.set_play_time_limit(game_id, limit_hours)
+        self.reload_library_grid()
+        if self.detail_view.game and self.detail_view.game.id == game_id:
+            updated_game = self.db_manager.get_game_by_id(game_id)
+            if updated_game:
+                self.detail_view.set_game(updated_game)
+
     def launch_game(self, game_id: str):
         game = self.db_manager.get_game_by_id(game_id)
         if not game:
+            return
+
+        if game.is_limit_reached():
+            QMessageBox.warning(
+                self,
+                "Playtime Limit Reached",
+                f"You have reached your weekly playtime limit ({game.play_time_limit:.1f} hrs) for '{game.name}'.\nLimit resets on Monday."
+            )
             return
 
         if game.needs_installation:
@@ -909,12 +937,40 @@ class MainWindow(QMainWindow):
             self.db_manager.save()
             self.reload_library_grid()
 
+    def restore_window_settings(self):
+        """Restores window size, position, and window state from QSettings."""
+        try:
+            settings = QSettings("GameTracker", "GameTracker")
+            geometry = settings.value("geometry")
+            if geometry:
+                self.restoreGeometry(geometry)
+            window_state = settings.value("windowState")
+            if window_state:
+                self.restoreState(window_state)
+        except Exception as e:
+            logger.error(f"Error restoring window settings: {e}")
+
+    def save_window_settings(self):
+        """Saves current window size, position, and window state to QSettings."""
+        try:
+            if not self.isMinimized():
+                settings = QSettings("GameTracker", "GameTracker")
+                settings.setValue("geometry", self.saveGeometry())
+                settings.setValue("windowState", self.saveState())
+        except Exception as e:
+            logger.error(f"Error saving window settings: {e}")
+
     def force_quit(self):
+        self.save_window_settings()
         # Cancel all active torrent download workers on quit
         for worker in self.download_workers.values():
             worker.cancel()
         self.is_force_quitting = True
         self.close()
+
+    def hideEvent(self, event):
+        self.save_window_settings()
+        super().hideEvent(event)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -925,6 +981,7 @@ class MainWindow(QMainWindow):
                 self.rearrange_library_grid(new_columns)
 
     def closeEvent(self, event):
+        self.save_window_settings()
         if self.is_force_quitting:
             self.tray_icon.hide()
             self.tracker_thread.stop()

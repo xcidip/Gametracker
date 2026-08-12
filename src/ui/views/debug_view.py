@@ -159,6 +159,26 @@ class DebugViewWidget(QWidget):
         self.btn_add_single.clicked.connect(self.add_single_test_card)
         btn_row1.addWidget(self.btn_add_single)
 
+        self.btn_add_expired = QPushButton("⏳ Add Expired Limit Game")
+        self.btn_add_expired.setMinimumHeight(42)
+        self.btn_add_expired.setStyleSheet("""
+            QPushButton {
+                background-color: #1E2235;
+                color: #FF7675;
+                border: 1px solid #FF7675;
+                border-radius: 8px;
+                padding: 10px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #FF7675;
+                color: #FFFFFF;
+            }
+        """)
+        self.btn_add_expired.clicked.connect(self.add_expired_limit_test_game)
+        btn_row1.addWidget(self.btn_add_expired)
+
         actions_layout.addLayout(btn_row1)
 
         # Row 2: Cleanup Actions
@@ -314,15 +334,46 @@ class DebugViewWidget(QWidget):
         self.log_event(f"Added single test game card: '{name}'")
         self.refresh_info()
 
+    def add_expired_limit_test_game(self):
+        """Adds a test game card that has reached/exceeded its weekly play time limit."""
+        from src.database import get_current_week_start
+        count = len([g for g in self.db_manager.get_all_games() if "Expired Limit" in g.name]) + 1
+        name = f"Limited Test Game #{count} (Expired Limit)"
+
+        game = GameEntry(
+            name=name,
+            exe_path=r"C:\Games\TestGame\game.exe",
+            process_name="testgame.exe",
+            playtime=7200.0,
+            weekly_playtime=7200.0,  # 2.0 hours played
+            weekly_start_date=get_current_week_start(),
+            play_time_limit=2.0,     # 2.0 hours limit -> limit is reached
+            last_played=time.strftime("%Y-%m-%d %H:%M:%S"),
+            is_favorite=False
+        )
+        self.db_manager.games[game.id] = game
+        self.db_manager.save()
+
+        self.log_event(f"Added test game with EXPIRED weekly play time limit: '{name}' (Limit: 2.0h, Weekly: 2.0h)")
+        self.refresh_info()
+
         if self.on_library_updated:
             self.on_library_updated()
+
+        if self.isVisible():
+            QMessageBox.information(
+                self,
+                "Expired Limit Card Added",
+                f"Added '{name}' to library.\n\nPlaytime limit: 2.0h\nWeekly played: 2.0h\nStatus: PLAYTIME REACHED"
+            )
 
     def clear_test_cards(self):
         """Removes test cards matching preset names or test naming pattern."""
         preset_names = {p["name"].lower() for p in TEST_GAMES_PRESETS}
         to_delete = []
         for g_id, game in self.db_manager.games.items():
-            if game.name.lower() in preset_names or "test #" in game.name.lower():
+            g_name_lower = game.name.lower()
+            if g_name_lower in preset_names or "test #" in g_name_lower or "expired limit" in g_name_lower:
                 to_delete.append(g_id)
 
         if not to_delete:

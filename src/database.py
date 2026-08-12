@@ -3,12 +3,19 @@ import os
 import time
 import uuid
 import logging
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 from pathlib import Path
 from src.config import DATA_FILE, format_playtime
 from src.core.icon_extractor import extract_icon_from_exe
 
 logger = logging.getLogger("Database")
+
+def get_current_week_start() -> str:
+    """Returns ISO date string (YYYY-MM-DD) of Monday of current week (Monday-Sunday)."""
+    today = datetime.now().date()
+    monday = today - timedelta(days=today.weekday())
+    return monday.isoformat()
 
 class GameEntry:
     def __init__(
@@ -31,6 +38,9 @@ class GameEntry:
         torrent_source: str = "",
         needs_installation: bool = False,
         installer_path: str = "",
+        weekly_playtime: float = 0.0,
+        weekly_start_date: str = "",
+        play_time_limit: float = 0.0,
     ):
         self.id = game_id or str(uuid.uuid4())
         self.name = name
@@ -43,6 +53,11 @@ class GameEntry:
         self.launch_args = launch_args
         self.is_running = False
 
+        # Weekly limit & tracking properties
+        self.weekly_playtime = float(weekly_playtime)
+        self.weekly_start_date = weekly_start_date or get_current_week_start()
+        self.play_time_limit = float(play_time_limit)
+
         # Download properties
         self.is_downloading = is_downloading
         self.download_progress = download_progress
@@ -54,7 +69,22 @@ class GameEntry:
         self.needs_installation = needs_installation
         self.installer_path = installer_path
 
+    def check_and_reset_weekly_playtime(self):
+        """Resets weekly playtime if current week has rolled over (new week starting Monday)."""
+        current_week = get_current_week_start()
+        if self.weekly_start_date != current_week:
+            self.weekly_playtime = 0.0
+            self.weekly_start_date = current_week
+
+    def is_limit_reached(self) -> bool:
+        """Returns True if user has set a weekly playtime limit > 0 and reached/exceeded it."""
+        if self.play_time_limit <= 0:
+            return False
+        self.check_and_reset_weekly_playtime()
+        return (self.weekly_playtime / 3600.0) >= self.play_time_limit
+
     def to_dict(self) -> dict:
+        self.check_and_reset_weekly_playtime()
         return {
             "id": self.id,
             "name": self.name,
@@ -65,6 +95,9 @@ class GameEntry:
             "last_played": self.last_played,
             "is_favorite": self.is_favorite,
             "launch_args": self.launch_args,
+            "weekly_playtime": self.weekly_playtime,
+            "weekly_start_date": self.weekly_start_date,
+            "play_time_limit": self.play_time_limit,
             "is_downloading": self.is_downloading,
             "download_progress": self.download_progress,
             "download_speed": self.download_speed,
@@ -88,6 +121,9 @@ class GameEntry:
             last_played=data.get("last_played", "Never"),
             is_favorite=data.get("is_favorite", False),
             launch_args=data.get("launch_args", ""),
+            weekly_playtime=data.get("weekly_playtime", 0.0),
+            weekly_start_date=data.get("weekly_start_date", ""),
+            play_time_limit=data.get("play_time_limit", 0.0),
             is_downloading=data.get("is_downloading", False),
             download_progress=data.get("download_progress", 0.0),
             download_speed=data.get("download_speed", "0 B/s"),
@@ -101,6 +137,10 @@ class GameEntry:
 
     def formatted_playtime(self, verbose: bool = False) -> str:
         return format_playtime(self.playtime, verbose)
+
+    def formatted_weekly_playtime(self, verbose: bool = False) -> str:
+        self.check_and_reset_weekly_playtime()
+        return format_playtime(self.weekly_playtime, verbose)
 
 
 def _normalize_path(p: str) -> str:
@@ -275,11 +315,20 @@ class DatabaseManager:
         return False
 
     def update_playtime(self, game_id: str, elapsed_seconds: float):
-        """Adds elapsed seconds to game playtime and updates last played timestamp."""
+        """Adds elapsed seconds to game playtime and weekly playtime, and updates last played timestamp."""
         game = self.games.get(game_id)
         if game:
+            game.check_and_reset_weekly_playtime()
             game.playtime += elapsed_seconds
+            game.weekly_playtime += elapsed_seconds
             game.last_played = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    def set_play_time_limit(self, game_id: str, limit_hours: float):
+        """Sets the weekly play limit in hours for a specific game and saves the database."""
+        game = self.games.get(game_id)
+        if game:
+            game.play_time_limit = max(0.0, float(limit_hours))
+            self.save()
 
     def get_all_games(self) -> List[GameEntry]:
         """Returns list of all games in library."""

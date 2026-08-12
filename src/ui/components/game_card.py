@@ -32,6 +32,7 @@ class GameCardWidget(QFrame):
     install_requested = pyqtSignal(str)  # game_id
     favorite_toggled = pyqtSignal(str)   # game_id
     card_clicked = pyqtSignal(str)       # game_id
+    set_limit_requested = pyqtSignal(str)# game_id
 
     def __init__(self, game: GameEntry, parent=None):
         super().__init__(parent)
@@ -153,7 +154,10 @@ class GameCardWidget(QFrame):
             self.playtime_label.setText("Downloaded • Setup Ready")
         else:
             self.progress_bar.hide()
-            self.playtime_label.setText(f"Playtime: {self.game.formatted_playtime()}")
+            if self.game.play_time_limit > 0:
+                self.playtime_label.setText(f"Playtime: {self.game.formatted_playtime()} (Week: {self.game.formatted_weekly_playtime()}/{self.game.play_time_limit:.1f}h)")
+            else:
+                self.playtime_label.setText(f"Playtime: {self.game.formatted_playtime()}")
         
         self.update_action_button()
 
@@ -173,6 +177,10 @@ class GameCardWidget(QFrame):
             self.btn_action.setText("● RUNNING")
             self.btn_action.setObjectName("SecondaryButton")
             self.btn_action.setEnabled(False)
+        elif self.game.is_limit_reached():
+            self.btn_action.setText("PLAYTIME REACHED")
+            self.btn_action.setObjectName("SecondaryButton")
+            self.btn_action.setEnabled(False)
         else:
             self.btn_action.setText("▶ LAUNCH")
             self.btn_action.setObjectName("PrimaryButton")
@@ -190,9 +198,20 @@ class GameCardWidget(QFrame):
     def update_playtime_display(self, total_seconds: float):
         if not self.game.is_downloading:
             self.game.playtime = total_seconds
-            self.playtime_label.setText(f"Playtime: {format_playtime(total_seconds)}")
+            if self.game.play_time_limit > 0:
+                self.playtime_label.setText(f"Playtime: {format_playtime(total_seconds)} (Week: {self.game.formatted_weekly_playtime()}/{self.game.play_time_limit:.1f}h)")
+            else:
+                self.playtime_label.setText(f"Playtime: {format_playtime(total_seconds)}")
+            self.update_action_button()
 
     def on_action_clicked(self):
+        if self.game.is_limit_reached():
+            QMessageBox.warning(
+                self,
+                "Playtime Limit Reached",
+                f"Weekly playtime limit of {self.game.play_time_limit:.1f} hrs reached for '{self.game.name}'.\nLimit resets on Monday."
+            )
+            return
         if self.game.is_downloading:
             reply = QMessageBox.question(
                 self,
@@ -263,6 +282,12 @@ class GameCardWidget(QFrame):
         action_favorite = QAction(fav_label, self)
         action_favorite.triggered.connect(self.on_favorite_clicked)
         menu.addAction(action_favorite)
+
+        limit_label = f"⏱️ Set Weekly Play Limit ({self.game.play_time_limit:.1f}h)..." if self.game.play_time_limit > 0 else "⏱️ Set Weekly Play Limit..."
+        action_limit = QAction(limit_label, self)
+        action_limit.triggered.connect(lambda: self.set_limit_requested.emit(self.game.id))
+        menu.addAction(action_limit)
+
         menu.addSeparator()
 
         if self.game.is_downloading:
