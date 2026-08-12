@@ -26,6 +26,7 @@ from src.ui.dialogs.torrent_dialog import TorrentDownloadDialog
 from src.ui.views.stats_view import StatsViewWidget
 from src.ui.views.debug_view import DebugViewWidget
 from src.ui.views.launchers_view import LaunchersViewWidget
+from src.ui.views.game_detail_view import GameDetailViewWidget
 
 logger = logging.getLogger("MainWindow")
 
@@ -160,6 +161,7 @@ class MainWindow(QMainWindow):
         # Top Bar (Search, Sort, Active Game Banner)
         top_bar = QFrame()
         top_bar.setObjectName("HeaderFrame")
+        self.top_bar = top_bar
         tb_layout = QHBoxLayout(top_bar)
         tb_layout.setContentsMargins(18, 12, 18, 12)
         tb_layout.setSpacing(14)
@@ -228,6 +230,17 @@ class MainWindow(QMainWindow):
         self.launchers_view.library_updated.connect(self.reload_library_grid)
         self.stacked_widget.addWidget(self.launchers_view)
 
+        # View 4: Game Detail View (Takes up entire library screen)
+        self.detail_view = GameDetailViewWidget()
+        self.detail_view.back_requested.connect(lambda: self.switch_view(0))
+        self.detail_view.launch_requested.connect(self.launch_game)
+        self.detail_view.install_requested.connect(self.run_game_installer)
+        self.detail_view.cancel_download_requested.connect(self.cancel_torrent_download)
+        self.detail_view.edit_requested.connect(self.edit_game)
+        self.detail_view.remove_requested.connect(self.remove_game)
+        self.detail_view.favorite_toggled.connect(self.toggle_favorite_game)
+        self.stacked_widget.addWidget(self.detail_view)
+
         content_layout.addWidget(self.stacked_widget, stretch=1)
 
         root_layout.addWidget(content_frame, stretch=1)
@@ -236,10 +249,16 @@ class MainWindow(QMainWindow):
         self.reload_library_grid()
 
     def switch_view(self, index: int):
-        self.btn_nav_library.setChecked(index == 0)
+        self.btn_nav_library.setChecked(index == 0 or index == 4)
         self.btn_nav_stats.setChecked(index == 1)
         self.btn_nav_debug.setChecked(index == 2)
         self.btn_nav_stores.setChecked(index == 3)
+
+        if index == 4:
+            self.top_bar.hide()
+        else:
+            self.top_bar.show()
+
         self.stacked_widget.setCurrentIndex(index)
 
         if index == 1:
@@ -248,6 +267,12 @@ class MainWindow(QMainWindow):
             self.debug_view.refresh_info()
         elif index == 3:
             self.launchers_view.refresh_scanned_games()
+
+    def open_game_detail(self, game_id: str):
+        game = self.db_manager.get_game_by_id(game_id)
+        if game:
+            self.detail_view.set_game(game)
+            self.switch_view(4)
 
     def reload_library_grid(self):
         # Clear existing card widgets
@@ -300,6 +325,7 @@ class MainWindow(QMainWindow):
             card.cancel_download_requested.connect(self.cancel_torrent_download)
             card.install_requested.connect(self.run_game_installer)
             card.favorite_toggled.connect(self.toggle_favorite_game)
+            card.card_clicked.connect(self.open_game_detail)
 
             row = idx // columns
             col = idx % columns
@@ -309,6 +335,10 @@ class MainWindow(QMainWindow):
     def toggle_favorite_game(self, game_id: str):
         self.db_manager.toggle_favorite(game_id)
         self.reload_library_grid()
+        if self.detail_view.game and self.detail_view.game.id == game_id:
+            updated_game = self.db_manager.get_game_by_id(game_id)
+            if updated_game:
+                self.detail_view.set_game(updated_game)
 
     def filter_library(self):
         self.reload_library_grid()
@@ -322,6 +352,8 @@ class MainWindow(QMainWindow):
     def on_playtime_updated(self, game_id: str, total_seconds: float, session_seconds: float):
         if game_id in self.cards:
             self.cards[game_id].update_playtime_display(total_seconds)
+        if self.detail_view.game and self.detail_view.game.id == game_id:
+            self.detail_view.update_playtime_display(total_seconds)
 
     def update_now_playing_banner(self):
         """Updates the top banner to list all currently running games."""
@@ -346,6 +378,8 @@ class MainWindow(QMainWindow):
         if game_id in self.cards:
             self.cards[game_id].update_status_badge(True)
             self.cards[game_id].update_action_button()
+        if self.detail_view.game:
+            self.detail_view.update_display()
         self.update_now_playing_banner()
 
     def on_game_stopped(self, game_id: str, game_name: str, session_seconds: float):
@@ -355,6 +389,8 @@ class MainWindow(QMainWindow):
         if game_id in self.cards:
             self.cards[game_id].update_status_badge(False)
             self.cards[game_id].update_action_button()
+        if self.detail_view.game:
+            self.detail_view.update_display()
         self.update_now_playing_banner()
 
     def on_running_status_changed(self, status_dict: dict):
@@ -365,6 +401,8 @@ class MainWindow(QMainWindow):
             if game_id in self.cards:
                 self.cards[game_id].update_status_badge(is_running)
                 self.cards[game_id].update_action_button()
+        if self.detail_view.game:
+            self.detail_view.update_display()
         self.update_now_playing_banner()
 
     def launch_game(self, game_id: str):
@@ -424,6 +462,8 @@ class MainWindow(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.db_manager.remove_game(game_id)
+            if self.detail_view.game and self.detail_view.game.id == game_id:
+                self.switch_view(0)
             self.reload_library_grid()
 
     def edit_game(self, game_id: str):
@@ -431,8 +471,15 @@ class MainWindow(QMainWindow):
         if not game:
             return
 
+        def _on_game_edited(_):
+            self.reload_library_grid()
+            if self.detail_view.game and self.detail_view.game.id == game_id:
+                updated = self.db_manager.get_game_by_id(game_id)
+                if updated:
+                    self.detail_view.set_game(updated)
+
         dialog = AddGameDialog(self.db_manager, game_to_edit=game, parent=self)
-        dialog.game_saved.connect(lambda _: self.reload_library_grid())
+        dialog.game_saved.connect(_on_game_edited)
         dialog.exec()
 
     def open_app_detector(self):

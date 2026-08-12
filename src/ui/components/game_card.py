@@ -1,12 +1,19 @@
 import os
+import sys
 import subprocess
 import logging
 from pathlib import Path
+
+# Ensure project root is in sys.path when script is executed directly
+project_root = Path(__file__).resolve().parent.parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
 from PyQt6.QtGui import QPixmap, QIcon, QAction, QCursor
 from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QMenu, QMessageBox, QWidget, QProgressBar
+    QMenu, QMessageBox, QWidget, QProgressBar, QApplication
 )
 
 from src.database import GameEntry
@@ -24,6 +31,7 @@ class GameCardWidget(QFrame):
     cancel_download_requested = pyqtSignal(str) # game_id
     install_requested = pyqtSignal(str)  # game_id
     favorite_toggled = pyqtSignal(str)   # game_id
+    card_clicked = pyqtSignal(str)       # game_id
 
     def __init__(self, game: GameEntry, parent=None):
         super().__init__(parent)
@@ -42,14 +50,13 @@ class GameCardWidget(QFrame):
 
         # Top Header: Action button (Launch) & options menu button
         top_layout = QHBoxLayout()
+        top_layout.setSpacing(6)
         self.btn_action = QPushButton()
         self.btn_action.setObjectName("PrimaryButton")
         self.btn_action.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.update_action_button()
         self.btn_action.clicked.connect(self.on_action_clicked)
-        top_layout.addWidget(self.btn_action)
-
-        top_layout.addStretch()
+        top_layout.addWidget(self.btn_action, 1)
 
         self.btn_favorite = QPushButton()
         self.btn_favorite.setFixedSize(24, 24)
@@ -108,7 +115,18 @@ class GameCardWidget(QFrame):
         self.progress_bar.hide()
         layout.addWidget(self.progress_bar)
 
+        # Make labels transparent for mouse events so card clicks are caught by GameCardWidget
+        self.icon_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.playtime_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.progress_bar.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+
         self.update_card_display()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.card_clicked.emit(self.game.id)
+        super().mousePressEvent(event)
 
     def load_icon(self):
         icon_path = self.game.icon_path
