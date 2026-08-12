@@ -35,6 +35,7 @@ from src.ui.views.debug_view import DebugViewWidget
 from src.ui.views.launchers_view import LaunchersViewWidget
 from src.ui.views.game_detail_view import GameDetailViewWidget
 from src.ui.views.settings_view import SettingsViewWidget
+from src.ui.views.limits_view import LimitsViewWidget
 from src.ui.icon_factory import create_app_icon
 
 logger = logging.getLogger("MainWindow")
@@ -60,6 +61,10 @@ class MainWindow(QMainWindow):
         self.sections: Dict[str, CollapsibleSection] = {}
         self.section_collapsed_states: Dict[str, bool] = {"favorites": False, "other": False}
         self.current_columns = 0
+
+        # State tracking sets for limit notifications
+        self.notified_5min_warnings: set = set()
+        self.notified_limit_reached: set = set()
 
         self.init_ui()
         self.init_system_tray()
@@ -130,10 +135,16 @@ class MainWindow(QMainWindow):
         self.btn_nav_stores.clicked.connect(lambda: self.switch_view(3))
         sb_layout.addWidget(self.btn_nav_stores)
 
+        self.btn_nav_limits = QPushButton("⏱️ Playtime Limits")
+        self.btn_nav_limits.setObjectName("NavButton")
+        self.btn_nav_limits.setCheckable(True)
+        self.btn_nav_limits.clicked.connect(lambda: self.switch_view(4))
+        sb_layout.addWidget(self.btn_nav_limits)
+
         self.btn_nav_settings = QPushButton("⚙️ Settings")
         self.btn_nav_settings.setObjectName("NavButton")
         self.btn_nav_settings.setCheckable(True)
-        self.btn_nav_settings.clicked.connect(lambda: self.switch_view(4))
+        self.btn_nav_settings.clicked.connect(lambda: self.switch_view(5))
         sb_layout.addWidget(self.btn_nav_settings)
 
         sb_layout.addStretch()
@@ -171,6 +182,23 @@ class MainWindow(QMainWindow):
         tb_layout.addWidget(self.sort_combo)
 
         content_layout.addWidget(top_bar)
+
+        # Collective Limit Top Banner (Shows shared daily/weekly limit status at top of library window)
+        self.collective_limit_banner = QFrame()
+        self.collective_limit_banner.setObjectName("CollectiveLimitBanner")
+        self.collective_limit_banner.setFixedHeight(28)
+        self.collective_limit_banner.hide()
+
+        clb_layout = QHBoxLayout(self.collective_limit_banner)
+        clb_layout.setContentsMargins(18, 0, 18, 0)
+        clb_layout.setSpacing(8)
+
+        self.collective_limit_label = QLabel("⏱️ Collective Limit: None")
+        self.collective_limit_label.setObjectName("CollectiveLimitLabel")
+        clb_layout.addWidget(self.collective_limit_label)
+        clb_layout.addStretch()
+
+        content_layout.addWidget(self.collective_limit_banner)
 
         # Now Playing Active Banner (Compact & Sleek)
         self.banner_frame = QFrame()
@@ -223,7 +251,13 @@ class MainWindow(QMainWindow):
         self.launchers_view.library_updated.connect(self.reload_library_grid)
         self.stacked_widget.addWidget(self.launchers_view)
 
-        # View 4: Settings View
+        # View 4: Playtime Limits View
+        self.limits_view = LimitsViewWidget(self.db_manager)
+        self.limits_view.limits_updated.connect(self.reload_library_grid)
+        self.limits_view.limits_updated.connect(self.reset_notification_states)
+        self.stacked_widget.addWidget(self.limits_view)
+
+        # View 5: Settings View
         self.settings_view = SettingsViewWidget(parent=self)
         self.settings_view.add_exe_requested.connect(self.open_add_game_dialog)
         self.settings_view.torrent_requested.connect(self.open_torrent_dialog)
@@ -235,7 +269,7 @@ class MainWindow(QMainWindow):
         self.stacked_widget.addWidget(self.settings_view)
 
 
-        # View 5: Game Detail View (Takes up entire library screen)
+        # View 6: Game Detail View (Takes up entire library screen)
         self.detail_view = GameDetailViewWidget()
         self.detail_view.back_requested.connect(lambda: self.switch_view(0))
         self.detail_view.launch_requested.connect(self.launch_game)
@@ -255,13 +289,14 @@ class MainWindow(QMainWindow):
         self.reload_library_grid()
 
     def switch_view(self, index: int):
-        self.btn_nav_library.setChecked(index == 0 or index == 5)
+        self.btn_nav_library.setChecked(index == 0 or index == 6)
         self.btn_nav_stats.setChecked(index == 1)
         self.btn_nav_debug.setChecked(index == 2)
         self.btn_nav_stores.setChecked(index == 3)
-        self.btn_nav_settings.setChecked(index == 4)
+        self.btn_nav_limits.setChecked(index == 4)
+        self.btn_nav_settings.setChecked(index == 5)
 
-        if index == 5:
+        if index == 6:
             self.top_bar.hide()
         else:
             self.top_bar.show()
@@ -279,13 +314,15 @@ class MainWindow(QMainWindow):
         elif index == 3:
             self.launchers_view.refresh_scanned_games()
         elif index == 4:
+            self.limits_view.refresh_overview()
+        elif index == 5:
             self.settings_view.refresh_settings()
 
     def open_game_detail(self, game_id: str):
         game = self.db_manager.get_game_by_id(game_id)
         if game:
             self.detail_view.set_game(game)
-            self.switch_view(5)
+            self.switch_view(6)
 
     def calculate_target_columns(self) -> int:
         if hasattr(self, 'library_scroll') and self.library_scroll.isVisible() and self.library_scroll.viewport().width() > 100:
@@ -356,7 +393,7 @@ class MainWindow(QMainWindow):
         other_games.sort(key=get_sort_key)
 
         def create_card(game):
-            card = GameCardWidget(game)
+            card = GameCardWidget(game, db_manager=self.db_manager)
             card.launch_requested.connect(self.launch_game)
             card.remove_requested.connect(self.remove_game)
             card.edit_requested.connect(self.edit_game)
@@ -399,6 +436,7 @@ class MainWindow(QMainWindow):
             self.sections["other"] = other_section
 
         self.main_vlayout.addStretch()
+        self.update_collective_limit_banner()
 
     def toggle_favorite_game(self, game_id: str):
         self.db_manager.toggle_favorite(game_id)
@@ -422,6 +460,171 @@ class MainWindow(QMainWindow):
             self.cards[game_id].update_playtime_display(total_seconds)
         if self.detail_view.game and self.detail_view.game.id == game_id:
             self.detail_view.update_playtime_display(total_seconds)
+        self.update_collective_limit_banner()
+        self.check_limit_notifications(game_id)
+
+    def reset_notification_states(self):
+        """Resets notification tracking flags when limits are updated or reset."""
+        self.notified_5min_warnings.clear()
+        self.notified_limit_reached.clear()
+
+    def show_windows_notification(self, title: str, message: str, is_warning: bool = True):
+        """Displays a native Windows desktop notification toast/balloon via system tray."""
+        if hasattr(self, 'tray_icon') and self.tray_icon is not None and self.tray_icon.isVisible():
+            icon = QSystemTrayIcon.MessageIcon.Warning if is_warning else QSystemTrayIcon.MessageIcon.Critical
+            self.tray_icon.showMessage(title, message, icon, 8000)
+            logger.info(f"Windows notification sent: '{title}' - '{message}'")
+
+    def check_limit_notifications(self, game_id: str):
+        """Checks if collective or game-specific playtime limits are within 5 minutes or reached, and triggers Windows notifications."""
+        # 1. Collective Daily Limit Check
+        if self.db_manager.collective_daily_limit > 0:
+            c_d_limit_secs = self.db_manager.collective_daily_limit * 3600.0
+            c_d_played = self.db_manager.get_collective_today_playtime_seconds()
+            rem_secs = c_d_limit_secs - c_d_played
+
+            if 0 < rem_secs <= 300:
+                if "coll_daily_5min" not in self.notified_5min_warnings:
+                    self.notified_5min_warnings.add("coll_daily_5min")
+                    mins = max(1, int(round(rem_secs / 60.0)))
+                    self.show_windows_notification(
+                        "⏱️ Collective Daily Limit Warning",
+                        f"You have {mins} minute(s) remaining of your collective daily playtime limit across all games!",
+                        is_warning=True
+                    )
+            elif rem_secs <= 0:
+                if "coll_daily_reached" not in self.notified_limit_reached:
+                    self.notified_limit_reached.add("coll_daily_reached")
+                    self.show_windows_notification(
+                        "🛑 Collective Daily Limit Reached",
+                        "You have reached your collective daily playtime limit across all games combined!",
+                        is_warning=False
+                    )
+
+        # 2. Collective Weekly Limit Check
+        if self.db_manager.collective_weekly_limit > 0:
+            c_w_limit_secs = self.db_manager.collective_weekly_limit * 3600.0
+            c_w_played = self.db_manager.get_collective_weekly_playtime_seconds()
+            rem_secs = c_w_limit_secs - c_w_played
+
+            if 0 < rem_secs <= 300:
+                if "coll_weekly_5min" not in self.notified_5min_warnings:
+                    self.notified_5min_warnings.add("coll_weekly_5min")
+                    mins = max(1, int(round(rem_secs / 60.0)))
+                    self.show_windows_notification(
+                        "⏱️ Collective Weekly Limit Warning",
+                        f"You have {mins} minute(s) remaining of your collective weekly playtime limit across all games!",
+                        is_warning=True
+                    )
+            elif rem_secs <= 0:
+                if "coll_weekly_reached" not in self.notified_limit_reached:
+                    self.notified_limit_reached.add("coll_weekly_reached")
+                    self.show_windows_notification(
+                        "🛑 Collective Weekly Limit Reached",
+                        "You have reached your collective weekly playtime limit across all games combined!",
+                        is_warning=False
+                    )
+
+        # 3. Individual Game Limits Check
+        game = self.db_manager.get_game_by_id(game_id)
+        if game:
+            from datetime import datetime
+            today_str = datetime.now().date().isoformat()
+
+            # Game Daily Limit
+            if game.daily_play_time_limit > 0:
+                g_d_limit_secs = game.daily_play_time_limit * 3600.0
+                g_d_played = game.get_current_week_daily_breakdown().get(today_str, 0.0)
+                rem_secs = g_d_limit_secs - g_d_played
+
+                key_5m = f"game_daily_5min_{game_id}"
+                key_reach = f"game_daily_reached_{game_id}"
+
+                if 0 < rem_secs <= 300:
+                    if key_5m not in self.notified_5min_warnings:
+                        self.notified_5min_warnings.add(key_5m)
+                        mins = max(1, int(round(rem_secs / 60.0)))
+                        self.show_windows_notification(
+                            f"⏱️ Daily Limit Warning - {game.name}",
+                            f"You have {mins} minute(s) remaining of your daily limit for '{game.name}'!",
+                            is_warning=True
+                        )
+                elif rem_secs <= 0:
+                    if key_reach not in self.notified_limit_reached:
+                        self.notified_limit_reached.add(key_reach)
+                        self.show_windows_notification(
+                            f"🛑 Daily Limit Reached - {game.name}",
+                            f"You have reached your daily playtime limit for '{game.name}'!",
+                            is_warning=False
+                        )
+
+            # Game Weekly Limit
+            if game.play_time_limit > 0:
+                g_w_limit_secs = game.play_time_limit * 3600.0
+                game.check_and_reset_weekly_playtime()
+                g_w_played = game.weekly_playtime
+                rem_secs = g_w_limit_secs - g_w_played
+
+                key_5m = f"game_weekly_5min_{game_id}"
+                key_reach = f"game_weekly_reached_{game_id}"
+
+                if 0 < rem_secs <= 300:
+                    if key_5m not in self.notified_5min_warnings:
+                        self.notified_5min_warnings.add(key_5m)
+                        mins = max(1, int(round(rem_secs / 60.0)))
+                        self.show_windows_notification(
+                            f"⏱️ Weekly Limit Warning - {game.name}",
+                            f"You have {mins} minute(s) remaining of your weekly limit for '{game.name}'!",
+                            is_warning=True
+                        )
+                elif rem_secs <= 0:
+                    if key_reach not in self.notified_limit_reached:
+                        self.notified_limit_reached.add(key_reach)
+                        self.show_windows_notification(
+                            f"🛑 Weekly Limit Reached - {game.name}",
+                            f"You have reached your weekly playtime limit for '{game.name}'!",
+                            is_warning=False
+                        )
+
+    def update_collective_limit_banner(self):
+        """Updates top library banner displaying collective/shared playtime limit status across all games."""
+        if not hasattr(self, 'collective_limit_banner'):
+            return
+
+        d_limit = self.db_manager.collective_daily_limit
+        w_limit = self.db_manager.collective_weekly_limit
+
+        if d_limit <= 0 and w_limit <= 0:
+            self.collective_limit_banner.hide()
+            return
+
+        today_secs = self.db_manager.get_collective_today_playtime_seconds()
+        weekly_secs = self.db_manager.get_collective_weekly_playtime_seconds()
+
+        today_hrs = today_secs / 3600.0
+        weekly_hrs = weekly_secs / 3600.0
+
+        d_reached = self.db_manager.is_collective_daily_limit_reached()
+        w_reached = self.db_manager.is_collective_weekly_limit_reached()
+
+        parts = []
+        if d_limit > 0:
+            parts.append(f"Today: {today_hrs:.1f}/{d_limit:.1f}h")
+        if w_limit > 0:
+            parts.append(f"Week: {weekly_hrs:.1f}/{w_limit:.1f}h")
+
+        info_text = " | ".join(parts)
+
+        if d_reached or w_reached:
+            reason = "Daily" if d_reached else "Weekly"
+            self.collective_limit_label.setText(f"⚠️ Collective {reason} Limit Reached! ({info_text})")
+            self.collective_limit_label.setObjectName("CollectiveLimitLabelAlert")
+        else:
+            self.collective_limit_label.setText(f"⏱️ Collective Limit (All Games): {info_text}")
+            self.collective_limit_label.setObjectName("CollectiveLimitLabel")
+
+        self.collective_limit_label.setStyle(self.collective_limit_label.style())
+        self.collective_limit_banner.show()
 
     def update_now_playing_banner(self):
         """Updates the top banner to list all currently running games."""
@@ -494,11 +697,24 @@ class MainWindow(QMainWindow):
         if not game:
             return
 
+        if self.db_manager.is_collective_limit_reached():
+            d_reached = self.db_manager.is_collective_daily_limit_reached()
+            period = "daily" if d_reached else "weekly"
+            limit_val = self.db_manager.collective_daily_limit if d_reached else self.db_manager.collective_weekly_limit
+            played_secs = self.db_manager.get_collective_today_playtime_seconds() if d_reached else self.db_manager.get_collective_weekly_playtime_seconds()
+            played_hrs = played_secs / 3600.0
+            QMessageBox.warning(
+                self,
+                "Collective Playtime Limit Reached",
+                f"Cannot launch '{game.name}'.\n\nYou have reached the collective {period} playtime limit ({played_hrs:.1f}h / {limit_val:.1f}h) across all games combined!"
+            )
+            return
+
         if game.is_limit_reached():
             QMessageBox.warning(
                 self,
                 "Playtime Limit Reached",
-                f"You have reached your weekly playtime limit ({game.play_time_limit:.1f} hrs) for '{game.name}'.\nLimit resets on Monday."
+                f"You have reached your playtime limit for '{game.name}'."
             )
             return
 

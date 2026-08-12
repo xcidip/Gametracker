@@ -41,6 +41,7 @@ class GameEntry:
         weekly_playtime: float = 0.0,
         weekly_start_date: str = "",
         play_time_limit: float = 0.0,
+        daily_play_time_limit: float = 0.0,
         play_sessions: Optional[List[dict]] = None,
     ):
         self.id = game_id or str(uuid.uuid4())
@@ -54,10 +55,11 @@ class GameEntry:
         self.launch_args = launch_args
         self.is_running = False
 
-        # Weekly limit & tracking properties
+        # Weekly & Daily limit & tracking properties
         self.weekly_playtime = float(weekly_playtime)
         self.weekly_start_date = weekly_start_date or get_current_week_start()
         self.play_time_limit = float(play_time_limit or 0.0)
+        self.daily_play_time_limit = float(daily_play_time_limit or 0.0)
 
         # Download properties
         self.is_downloading = is_downloading
@@ -80,12 +82,25 @@ class GameEntry:
             self.weekly_playtime = 0.0
             self.weekly_start_date = current_week
 
-    def is_limit_reached(self) -> bool:
+    def is_daily_limit_reached(self) -> bool:
+        """Returns True if user has set a daily playtime limit > 0 and reached/exceeded it today."""
+        if self.daily_play_time_limit <= 0:
+            return False
+        today_str = datetime.now().date().isoformat()
+        daily_breakdown = self.get_current_week_daily_breakdown()
+        today_secs = daily_breakdown.get(today_str, 0.0)
+        return (today_secs / 3600.0) >= self.daily_play_time_limit
+
+    def is_weekly_limit_reached(self) -> bool:
         """Returns True if user has set a weekly playtime limit > 0 and reached/exceeded it."""
         if self.play_time_limit <= 0:
             return False
         self.check_and_reset_weekly_playtime()
         return (self.weekly_playtime / 3600.0) >= self.play_time_limit
+
+    def is_limit_reached(self) -> bool:
+        """Returns True if user has reached either daily or weekly playtime limit."""
+        return self.is_daily_limit_reached() or self.is_weekly_limit_reached()
 
     def add_play_session(self, start_time: str, end_time: str, duration: float):
         """Records a completed app launch session with start time, end time, and duration."""
@@ -194,6 +209,7 @@ class GameEntry:
             "weekly_playtime": self.weekly_playtime,
             "weekly_start_date": self.weekly_start_date,
             "play_time_limit": self.play_time_limit,
+            "daily_play_time_limit": self.daily_play_time_limit,
             "is_downloading": self.is_downloading,
             "download_progress": self.download_progress,
             "download_speed": self.download_speed,
@@ -221,6 +237,7 @@ class GameEntry:
             weekly_playtime=data.get("weekly_playtime", 0.0),
             weekly_start_date=data.get("weekly_start_date", ""),
             play_time_limit=data.get("play_time_limit", 0.0),
+            daily_play_time_limit=data.get("daily_play_time_limit", 0.0),
             is_downloading=data.get("is_downloading", False),
             download_progress=data.get("download_progress", 0.0),
             download_speed=data.get("download_speed", "0 B/s"),
@@ -254,6 +271,8 @@ class DatabaseManager:
     def __init__(self, data_file: Path = DATA_FILE):
         self.data_file = Path(data_file)
         self.games: Dict[str, GameEntry] = {}
+        self.collective_daily_limit: float = 0.0
+        self.collective_weekly_limit: float = 0.0
         self.load()
 
     def load(self, target_path: Optional[Path] = None):
@@ -268,6 +287,8 @@ class DatabaseManager:
                 data = json.load(f)
                 games_list = data.get("games", [])
                 self.games = {g["id"]: GameEntry.from_dict(g) for g in games_list}
+                self.collective_daily_limit = float(data.get("collective_daily_limit", 0.0))
+                self.collective_weekly_limit = float(data.get("collective_weekly_limit", 0.0))
             self.deduplicate()
             logger.info(f"Loaded {len(self.games)} games from library database file: {path}")
         except Exception as e:
@@ -319,6 +340,8 @@ class DatabaseManager:
             data = {
                 "version": 1.0,
                 "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "collective_daily_limit": self.collective_daily_limit,
+                "collective_weekly_limit": self.collective_weekly_limit,
                 "games": [game.to_dict() for game in self.games.values()]
             }
             with open(tmp_path, "w", encoding="utf-8") as f:
@@ -437,6 +460,87 @@ class DatabaseManager:
         if game:
             game.play_time_limit = max(0.0, float(limit_hours))
             self.save()
+
+    def set_daily_play_time_limit(self, game_id: str, limit_hours: float):
+        """Sets the daily play limit in hours for a specific game and saves the database."""
+        game = self.games.get(game_id)
+        if game:
+            game.daily_play_time_limit = max(0.0, float(limit_hours))
+            self.save()
+
+    def set_all_games_weekly_limit(self, limit_hours: float):
+        """Sets the weekly play limit in hours for all games in the library."""
+        val = max(0.0, float(limit_hours))
+        for game in self.games.values():
+            game.play_time_limit = val
+        self.save()
+
+    def set_all_games_daily_limit(self, limit_hours: float):
+        """Sets the daily play limit in hours for all games in the library."""
+        val = max(0.0, float(limit_hours))
+        for game in self.games.values():
+            game.daily_play_time_limit = val
+        self.save()
+
+    def set_all_games_limits(self, daily_hours: float, weekly_hours: float):
+        """Sets both daily and weekly play limits for all games in the library."""
+        d_val = max(0.0, float(daily_hours))
+        w_val = max(0.0, float(weekly_hours))
+        for game in self.games.values():
+            game.daily_play_time_limit = d_val
+            game.play_time_limit = w_val
+        self.save()
+
+    def get_collective_today_playtime_seconds(self) -> float:
+        """Returns cumulative seconds played today across ALL games combined."""
+        today_str = datetime.now().date().isoformat()
+        total_secs = 0.0
+        for game in self.games.values():
+            daily_breakdown = game.get_current_week_daily_breakdown()
+            total_secs += daily_breakdown.get(today_str, 0.0)
+        return total_secs
+
+    def get_collective_weekly_playtime_seconds(self) -> float:
+        """Returns cumulative seconds played this week across ALL games combined."""
+        total_secs = 0.0
+        for game in self.games.values():
+            game.check_and_reset_weekly_playtime()
+            total_secs += game.weekly_playtime
+        return total_secs
+
+    def is_collective_daily_limit_reached(self) -> bool:
+        """Returns True if collective daily limit > 0 and combined today playtime exceeds it."""
+        if self.collective_daily_limit <= 0:
+            return False
+        played_hrs = self.get_collective_today_playtime_seconds() / 3600.0
+        return played_hrs >= self.collective_daily_limit
+
+    def is_collective_weekly_limit_reached(self) -> bool:
+        """Returns True if collective weekly limit > 0 and combined weekly playtime exceeds it."""
+        if self.collective_weekly_limit <= 0:
+            return False
+        played_hrs = self.get_collective_weekly_playtime_seconds() / 3600.0
+        return played_hrs >= self.collective_weekly_limit
+
+    def is_collective_limit_reached(self) -> bool:
+        """Returns True if combined playtime across all games exceeds either collective daily or weekly limit."""
+        return self.is_collective_daily_limit_reached() or self.is_collective_weekly_limit_reached()
+
+    def set_collective_daily_limit(self, hours: float):
+        """Sets collective maximum daily playtime limit in hours for all games combined."""
+        self.collective_daily_limit = max(0.0, float(hours))
+        self.save()
+
+    def set_collective_weekly_limit(self, hours: float):
+        """Sets collective maximum weekly playtime limit in hours for all games combined."""
+        self.collective_weekly_limit = max(0.0, float(hours))
+        self.save()
+
+    def set_collective_limits(self, daily_hours: float, weekly_hours: float):
+        """Sets collective daily and weekly limits in hours for all games combined."""
+        self.collective_daily_limit = max(0.0, float(daily_hours))
+        self.collective_weekly_limit = max(0.0, float(weekly_hours))
+        self.save()
 
     def get_all_games(self) -> List[GameEntry]:
         """Returns list of all games in library."""

@@ -34,9 +34,10 @@ class GameCardWidget(QFrame):
     card_clicked = pyqtSignal(str)       # game_id
     set_limit_requested = pyqtSignal(str)# game_id
 
-    def __init__(self, game: GameEntry, parent=None):
+    def __init__(self, game: GameEntry, db_manager = None, parent=None):
         super().__init__(parent)
         self.game = game
+        self.db_manager = db_manager
         self.setObjectName("GameCard")
         self.setMinimumSize(QSize(190, 155))
         self.setMaximumSize(QSize(260, 185))
@@ -154,8 +155,14 @@ class GameCardWidget(QFrame):
             self.playtime_label.setText("Downloaded • Setup Ready")
         else:
             self.progress_bar.hide()
+            limit_texts = []
+            if self.game.daily_play_time_limit > 0:
+                limit_texts.append(f"Day: {self.game.daily_play_time_limit:.1f}h")
             if self.game.play_time_limit > 0:
-                self.playtime_label.setText(f"Week: {self.game.formatted_weekly_playtime()}/{self.game.play_time_limit:.1f}h")
+                limit_texts.append(f"Wk: {self.game.formatted_weekly_playtime()}/{self.game.play_time_limit:.1f}h")
+
+            if limit_texts:
+                self.playtime_label.setText(" | ".join(limit_texts))
             else:
                 self.playtime_label.setText(f"Playtime: {self.game.formatted_playtime()}")
         
@@ -165,6 +172,7 @@ class GameCardWidget(QFrame):
         self.update_action_button()
 
     def update_action_button(self):
+        is_blocked = self.game.is_limit_reached() or (self.db_manager and self.db_manager.is_collective_limit_reached())
         if self.game.is_downloading:
             self.btn_action.setText(f"⏬ DOWNLOADING ({int(self.game.download_progress)}%)")
             self.btn_action.setObjectName("SecondaryButton")
@@ -177,8 +185,8 @@ class GameCardWidget(QFrame):
             self.btn_action.setText("● RUNNING")
             self.btn_action.setObjectName("SecondaryButton")
             self.btn_action.setEnabled(False)
-        elif self.game.is_limit_reached():
-            self.btn_action.setText("PLAYTIME REACHED")
+        elif is_blocked:
+            self.btn_action.setText("LIMIT REACHED")
             self.btn_action.setObjectName("SecondaryButton")
             self.btn_action.setEnabled(False)
         else:

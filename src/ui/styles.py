@@ -465,6 +465,133 @@ QScrollBar::handle:vertical:hover {{
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
     height: 0px;
 }}
+
+/* SpinBoxes */
+QDoubleSpinBox, QSpinBox {{
+    background-color: {p['card_bg']};
+    color: {p['cyan']};
+    border: 1px solid {p['border']};
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: {fs(13)};
+    font-weight: bold;
+}}
+
+QDoubleSpinBox:focus, QSpinBox:focus {{
+    border: 1px solid {p['accent']};
+}}
+
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button,
+QSpinBox::up-button, QSpinBox::down-button {{
+    background-color: {p['card_hover']};
+    border: none;
+    width: 18px;
+}}
+
+/* Preset Buttons */
+QPushButton#PresetButton {{
+    background-color: {p['card_bg']};
+    color: {p['cyan']};
+    border: 1px solid {p['border']};
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: {fs(12)};
+    font-weight: 600;
+}}
+
+QPushButton#PresetButton:hover {{
+    background-color: {p['cyan']};
+    color: {p['bg_main']};
+    border-color: {p['cyan']};
+}}
+
+QPushButton#PresetButton:pressed {{
+    background-color: {p['accent']};
+    color: #FFFFFF;
+}}
+
+/* Limits View Elements */
+QFrame#LimitsCard {{
+    background-color: {p['card_bg']};
+    border: 1px solid {p['border']};
+    border-radius: 12px;
+}}
+
+QFrame#LimitsStatusBanner {{
+    background-color: {p['card_bg']};
+    border: 1px solid {p['cyan']};
+    border-radius: 8px;
+}}
+
+#LimitsHeaderTitle {{
+    font-size: {fs(22)};
+    font-weight: bold;
+    color: {p['accent']};
+}}
+
+#LimitsHeaderSubtitle {{
+    font-size: {fs(13)};
+    color: {p['text_muted']};
+}}
+
+#LimitsCardTitle {{
+    font-size: {fs(16)};
+    font-weight: bold;
+    color: {p['cyan']};
+}}
+
+#LimitsCardWeeklyTitle {{
+    font-size: {fs(16)};
+    font-weight: bold;
+    color: {p['accent']};
+}}
+
+#LimitsCardComboTitle {{
+    font-size: {fs(16)};
+    font-weight: bold;
+    color: {p['text_primary']};
+}}
+
+#LimitsCardDesc {{
+    font-size: {fs(12)};
+    color: {p['text_muted']};
+}}
+
+#LimitsStatusLabel {{
+    font-size: {fs(13)};
+    font-weight: 600;
+    color: {p['cyan']};
+}}
+
+#LimitsOverviewTitle {{
+    font-size: {fs(15)};
+    font-weight: bold;
+    color: {p['text_primary']};
+}}
+
+#LimitsOverviewInfo {{
+    font-size: {fs(13)};
+    color: {p['text_muted']};
+}}
+
+/* Collective Limit Top Library Banner */
+QFrame#CollectiveLimitBanner {{
+    background-color: {p['card_bg']};
+    border-bottom: 1px solid {p['border']};
+    padding: 4px 14px;
+}}
+
+#CollectiveLimitLabel {{
+    font-size: {fs(12)};
+    font-weight: bold;
+    color: {p['cyan']};
+}}
+
+#CollectiveLimitLabelAlert {{
+    font-size: {fs(12)};
+    font-weight: bold;
+    color: {p['danger_text']};
+}}
 """
 
 
