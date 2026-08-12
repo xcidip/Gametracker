@@ -1,9 +1,9 @@
 import logging
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QTime
 from PyQt6.QtGui import QCursor
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame,
-    QScrollArea, QDoubleSpinBox
+    QScrollArea, QDoubleSpinBox, QCheckBox, QComboBox, QTimeEdit
 )
 
 from src.database import DatabaseManager
@@ -263,6 +263,121 @@ class LimitsViewWidget(QWidget):
         combo_layout.addLayout(combo_btn_layout)
         layout.addWidget(combo_card)
 
+        # -------------------------------------------------------------
+        # Section 4: Daily Launch Window Schedule (Every Day of the Week)
+        # -------------------------------------------------------------
+        sched_card = QFrame()
+        sched_card.setObjectName("ScheduleCard")
+        sched_layout = QVBoxLayout(sched_card)
+        sched_layout.setContentsMargins(18, 18, 18, 18)
+        sched_layout.setSpacing(14)
+
+        s_title = QLabel("📅 Daily Launch Window Schedule (Every Day of the Week)")
+        s_title.setObjectName("ScheduleCardTitle")
+        sched_layout.addWidget(s_title)
+
+        s_desc = QLabel(
+            "Configure allowed or disallowed time frames for launching games for every day of the week. "
+            "Outside of allowed hours, launching games will be prevented."
+        )
+        s_desc.setObjectName("ScheduleCardDesc")
+        s_desc.setWordWrap(True)
+        sched_layout.addWidget(s_desc)
+
+        # Batch Preset Buttons
+        batch_layout = QHBoxLayout()
+        batch_layout.setSpacing(10)
+
+        btn_copy_weekdays = QPushButton("Copy Mon -> Mon-Fri")
+        btn_copy_weekdays.setObjectName("PresetButton")
+        btn_copy_weekdays.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_copy_weekdays.clicked.connect(self.apply_mon_to_weekdays)
+        batch_layout.addWidget(btn_copy_weekdays)
+
+        btn_copy_all = QPushButton("Copy Mon -> All Days")
+        btn_copy_all.setObjectName("PresetButton")
+        btn_copy_all.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_copy_all.clicked.connect(self.apply_mon_to_all)
+        batch_layout.addWidget(btn_copy_all)
+
+        btn_clear_sched = QPushButton("Disable All Rules")
+        btn_clear_sched.setObjectName("DangerButton")
+        btn_clear_sched.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_clear_sched.clicked.connect(self.clear_all_schedules)
+        batch_layout.addWidget(btn_clear_sched)
+
+        batch_layout.addStretch()
+        sched_layout.addLayout(batch_layout)
+
+        # Day Rows
+        self.schedule_rows = {}
+        days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+        for day in days:
+            day_sched = self.db_manager.get_day_launch_schedule(day)
+
+            row_layout = QHBoxLayout()
+            row_layout.setSpacing(12)
+
+            cb_day = QCheckBox(day)
+            cb_day.setObjectName("ScheduleDayCheckBox")
+            cb_day.setFixedWidth(120)
+            cb_day.setChecked(day_sched.get("enabled", False))
+            cb_day.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+
+            combo_mode = QComboBox()
+            combo_mode.addItems(["Disallow Launching Between", "Allow Launching Only Between"])
+            combo_mode.setFixedWidth(220)
+            combo_mode.setCurrentIndex(0 if day_sched.get("mode") == "disallow" else 1)
+
+            lbl_start = QLabel("Start:")
+            lbl_start.setObjectName("LimitsCardDesc")
+
+            time_start = QTimeEdit()
+            time_start.setDisplayFormat("HH:mm")
+            time_start.setFixedWidth(90)
+            try:
+                sh, sm = map(int, day_sched.get("start", "09:00").split(":"))
+                time_start.setTime(QTime(sh, sm))
+            except Exception:
+                time_start.setTime(QTime(9, 0))
+
+            lbl_end = QLabel("End:")
+            lbl_end.setObjectName("LimitsCardDesc")
+
+            time_end = QTimeEdit()
+            time_end.setDisplayFormat("HH:mm")
+            time_end.setFixedWidth(90)
+            try:
+                eh, em = map(int, day_sched.get("end", "17:00").split(":"))
+                time_end.setTime(QTime(eh, em))
+            except Exception:
+                time_end.setTime(QTime(17, 0))
+
+            row_layout.addWidget(cb_day)
+            row_layout.addWidget(combo_mode)
+            row_layout.addWidget(lbl_start)
+            row_layout.addWidget(time_start)
+            row_layout.addWidget(lbl_end)
+            row_layout.addWidget(time_end)
+            row_layout.addStretch()
+
+            sched_layout.addLayout(row_layout)
+            self.schedule_rows[day] = {
+                "cb": cb_day,
+                "combo": combo_mode,
+                "start": time_start,
+                "end": time_end
+            }
+
+        btn_save_sched = QPushButton("Save Launch Schedule")
+        btn_save_sched.setObjectName("PrimaryButton")
+        btn_save_sched.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn_save_sched.clicked.connect(self.save_schedule)
+        sched_layout.addWidget(btn_save_sched, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        layout.addWidget(sched_card)
+
         layout.addStretch()
         scroll.setWidget(container)
         main_layout.addWidget(scroll)
@@ -290,10 +405,29 @@ class LimitsViewWidget(QWidget):
         d_status = f"{today_fmt} / {daily_limit_str}"
         w_status = f"{weekly_fmt} / {weekly_limit_str}"
 
+        allowed_now, rem_secs, next_time_str = self.db_manager.get_time_until_launch_allowed()
+
+        if not allowed_now:
+            secs = max(0, int(rem_secs))
+            hours = secs // 3600
+            minutes = (secs % 3600) // 60
+            if hours > 0:
+                time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+            elif minutes > 0:
+                time_str = f"{minutes}m"
+            else:
+                time_str = f"{secs}s"
+            at_str = f" (at {next_time_str})" if next_time_str else ""
+            sched_status = f"🔒 Restricted — Launch allowed in {time_str}{at_str}"
+        else:
+            any_enabled = any(self.db_manager.get_day_launch_schedule(d).get("enabled", False) for d in ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
+            sched_status = "🟢 Allowed — Launch schedule active" if any_enabled else "ℹ️ Unlimited (No Schedule Restriction)"
+
         self.lbl_overview_info.setText(
             f"<b>Library Size:</b> {total_games} games combined<br>"
             f"<b>Collective Playtime Today:</b> {d_status}<br>"
-            f"<b>Collective Playtime This Week:</b> {w_status}"
+            f"<b>Collective Playtime This Week:</b> {w_status}<br>"
+            f"<b>Launch Schedule Status:</b> {sched_status}"
         )
 
         d_reached = self.db_manager.is_collective_daily_limit_reached()
@@ -303,10 +437,12 @@ class LimitsViewWidget(QWidget):
             self.lbl_status.setText(f"⚠️ Collective Daily Playtime Limit Reached! ({today_hrs:.1f}h / {daily_limit:.1f}h limit reached today)")
         elif w_reached:
             self.lbl_status.setText(f"⚠️ Collective Weekly Playtime Limit Reached! ({weekly_hrs:.1f}h / {weekly_limit:.1f}h limit reached this week)")
+        elif not allowed_now:
+            self.lbl_status.setText(f"🔒 Launching Restricted — Games can be launched in {time_str}{at_str}.")
         elif daily_limit > 0 or weekly_limit > 0:
             self.lbl_status.setText("🟢 Playable — Shared gaming time is under set limits.")
         else:
-            self.lbl_status.setText("ℹ️ Unlimited — No shared playtime limits active.")
+            self.lbl_status.setText("ℹ️ Unlimited — No active playtime limit or schedule restriction.")
 
     def apply_daily_limit(self, hours: float):
         self.db_manager.set_collective_daily_limit(hours)
@@ -341,3 +477,55 @@ class LimitsViewWidget(QWidget):
         self.spin_weekly.setValue(weekly_hours)
         self.refresh_overview()
         self.limits_updated.emit()
+
+    def save_schedule(self):
+        for day, row in self.schedule_rows.items():
+            enabled = row["cb"].isChecked()
+            mode = "disallow" if row["combo"].currentIndex() == 0 else "allow"
+            start_str = row["start"].time().toString("HH:mm")
+            end_str = row["end"].time().toString("HH:mm")
+            self.db_manager.set_day_launch_schedule(day, enabled, mode, start_str, end_str)
+
+        self.lbl_status.setText("✅ Daily game launch schedule saved successfully.")
+        self.refresh_overview()
+        self.limits_updated.emit()
+
+    def apply_mon_to_weekdays(self):
+        mon_row = self.schedule_rows.get("Monday")
+        if not mon_row:
+            return
+        enabled = mon_row["cb"].isChecked()
+        mode_idx = mon_row["combo"].currentIndex()
+        t_start = mon_row["start"].time()
+        t_end = mon_row["end"].time()
+
+        for day in ["Tuesday", "Wednesday", "Thursday", "Friday"]:
+            row = self.schedule_rows[day]
+            row["cb"].setChecked(enabled)
+            row["combo"].setCurrentIndex(mode_idx)
+            row["start"].setTime(t_start)
+            row["end"].setTime(t_end)
+
+        self.save_schedule()
+
+    def apply_mon_to_all(self):
+        mon_row = self.schedule_rows.get("Monday")
+        if not mon_row:
+            return
+        enabled = mon_row["cb"].isChecked()
+        mode_idx = mon_row["combo"].currentIndex()
+        t_start = mon_row["start"].time()
+        t_end = mon_row["end"].time()
+
+        for day, row in self.schedule_rows.items():
+            row["cb"].setChecked(enabled)
+            row["combo"].setCurrentIndex(mode_idx)
+            row["start"].setTime(t_start)
+            row["end"].setTime(t_end)
+
+        self.save_schedule()
+
+    def clear_all_schedules(self):
+        for row in self.schedule_rows.values():
+            row["cb"].setChecked(False)
+        self.save_schedule()

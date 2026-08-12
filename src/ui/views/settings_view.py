@@ -72,6 +72,7 @@ class SettingsViewWidget(QWidget):
     torrent_requested = pyqtSignal()
     export_requested = pyqtSignal()
     import_requested = pyqtSignal()
+    remove_all_requested = pyqtSignal()
     startup_toggled = pyqtSignal()
     theme_changed = pyqtSignal(str)
     font_scale_changed = pyqtSignal(float)
@@ -250,7 +251,20 @@ class SettingsViewWidget(QWidget):
             icon_symbol="📂",
             action_widget=self.btn_import
         )
-        group2.add_row(row_import, is_last=True)
+        group2.add_row(row_import, is_last=False)
+
+        # Remove All Games Row
+        self.btn_remove_all = QPushButton("🗑️ Remove All")
+        self.btn_remove_all.setObjectName("DangerButton")
+        self.btn_remove_all.setFixedWidth(130)
+        self.btn_remove_all.clicked.connect(self.remove_all_requested.emit)
+        row_remove_all = SettingsRow(
+            title="Remove All Games from Library",
+            description="Permanently delete all games and applications from your library collection.",
+            icon_symbol="🗑️",
+            action_widget=self.btn_remove_all
+        )
+        group2.add_row(row_remove_all, is_last=True)
 
         scroll_layout.addWidget(group2)
 

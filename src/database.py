@@ -267,12 +267,23 @@ def _normalize_path(p: str) -> str:
         return p.lower()
 
 
+DEFAULT_LAUNCH_SCHEDULE = {
+    "Monday": {"enabled": False, "mode": "disallow", "start": "09:00", "end": "17:00"},
+    "Tuesday": {"enabled": False, "mode": "disallow", "start": "09:00", "end": "17:00"},
+    "Wednesday": {"enabled": False, "mode": "disallow", "start": "09:00", "end": "17:00"},
+    "Thursday": {"enabled": False, "mode": "disallow", "start": "09:00", "end": "17:00"},
+    "Friday": {"enabled": False, "mode": "disallow", "start": "09:00", "end": "17:00"},
+    "Saturday": {"enabled": False, "mode": "disallow", "start": "09:00", "end": "17:00"},
+    "Sunday": {"enabled": False, "mode": "disallow", "start": "09:00", "end": "17:00"},
+}
+
 class DatabaseManager:
     def __init__(self, data_file: Path = DATA_FILE):
         self.data_file = Path(data_file)
         self.games: Dict[str, GameEntry] = {}
         self.collective_daily_limit: float = 0.0
         self.collective_weekly_limit: float = 0.0
+        self.launch_schedule: Dict[str, dict] = {day: dict(cfg) for day, cfg in DEFAULT_LAUNCH_SCHEDULE.items()}
         self.load()
 
     def load(self, target_path: Optional[Path] = None):
@@ -289,6 +300,12 @@ class DatabaseManager:
                 self.games = {g["id"]: GameEntry.from_dict(g) for g in games_list}
                 self.collective_daily_limit = float(data.get("collective_daily_limit", 0.0))
                 self.collective_weekly_limit = float(data.get("collective_weekly_limit", 0.0))
+                loaded_schedule = data.get("launch_schedule", {})
+                self.launch_schedule = {day: dict(cfg) for day, cfg in DEFAULT_LAUNCH_SCHEDULE.items()}
+                if isinstance(loaded_schedule, dict):
+                    for day, cfg in loaded_schedule.items():
+                        if day in self.launch_schedule and isinstance(cfg, dict):
+                            self.launch_schedule[day].update(cfg)
             self.deduplicate()
             logger.info(f"Loaded {len(self.games)} games from library database file: {path}")
         except Exception as e:
@@ -342,6 +359,7 @@ class DatabaseManager:
                 "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "collective_daily_limit": self.collective_daily_limit,
                 "collective_weekly_limit": self.collective_weekly_limit,
+                "launch_schedule": self.launch_schedule,
                 "games": [game.to_dict() for game in self.games.values()]
             }
             with open(tmp_path, "w", encoding="utf-8") as f:
@@ -428,6 +446,11 @@ class DatabaseManager:
         if game_id in self.games:
             del self.games[game_id]
             self.save()
+
+    def remove_all_games(self):
+        """Removes all game entries from the database library."""
+        self.games.clear()
+        self.save()
 
     def toggle_favorite(self, game_id: str) -> bool:
         """Toggles the favorite status of a game entry."""
@@ -541,6 +564,86 @@ class DatabaseManager:
         self.collective_daily_limit = max(0.0, float(daily_hours))
         self.collective_weekly_limit = max(0.0, float(weekly_hours))
         self.save()
+
+    def set_day_launch_schedule(self, day: str, enabled: bool, mode: str, start: str, end: str):
+        """Sets launch schedule restriction for a specific day of the week."""
+        if day in self.launch_schedule:
+            self.launch_schedule[day] = {
+                "enabled": bool(enabled),
+                "mode": mode if mode in ("allow", "disallow") else "disallow",
+                "start": str(start),
+                "end": str(end)
+            }
+            self.save()
+
+    def get_day_launch_schedule(self, day: str) -> dict:
+        """Returns launch schedule dict for a specific day of the week."""
+        return self.launch_schedule.get(day, {"enabled": False, "mode": "disallow", "start": "09:00", "end": "17:00"})
+
+    def is_launch_allowed_at_dt(self, dt: datetime) -> Tuple[bool, str]:
+        """Evaluates whether game launch is permitted at a specific datetime based on schedule rules."""
+        day_name = dt.strftime("%A")
+        sched = self.launch_schedule.get(day_name, {})
+        if not sched.get("enabled", False):
+            return True, ""
+
+        mode = sched.get("mode", "disallow")
+        start_str = sched.get("start", "09:00")
+        end_str = sched.get("end", "17:00")
+
+        try:
+            sh, sm = map(int, start_str.split(":"))
+            eh, em = map(int, end_str.split(":"))
+        except Exception:
+            return True, ""
+
+        start_mins = sh * 60 + sm
+        end_mins = eh * 60 + em
+        dt_mins = dt.hour * 60 + dt.minute
+
+        if start_mins <= end_mins:
+            in_window = (start_mins <= dt_mins < end_mins)
+        else:
+            in_window = (dt_mins >= start_mins or dt_mins < end_mins)
+
+        if mode == "disallow":
+            if in_window:
+                return False, f"Launching games is disallowed on {day_name}s between {start_str} and {end_str}."
+            return True, ""
+        else:
+            if not in_window:
+                return False, f"Launching games is only allowed on {day_name}s between {start_str} and {end_str}."
+            return True, ""
+
+    def is_launch_allowed_now(self) -> Tuple[bool, str]:
+        """Evaluates whether game launching is allowed right now."""
+        return self.is_launch_allowed_at_dt(datetime.now())
+
+    def get_time_until_launch_allowed(self) -> Tuple[bool, float, Optional[str]]:
+        """
+        Returns (is_allowed_now, seconds_until_allowed, next_allowed_time_str).
+        If launch is currently allowed, returns (True, 0.0, None).
+        If disallowed, steps forward in time to find the exact next datetime launch becomes permitted.
+        """
+        now = datetime.now()
+        allowed, _ = self.is_launch_allowed_now()
+        if allowed:
+            return True, 0.0, None
+
+        check_dt = now.replace(second=0, microsecond=0)
+        max_steps = 7 * 24 * 60
+        found_dt = None
+        for step in range(1, max_steps + 1):
+            test_dt = check_dt + timedelta(minutes=step)
+            if self.is_launch_allowed_at_dt(test_dt)[0]:
+                found_dt = test_dt
+                break
+
+        if not found_dt:
+            return False, 0.0, None
+
+        seconds_remaining = (found_dt - now).total_seconds()
+        return False, seconds_remaining, found_dt.strftime("%H:%M")
 
     def get_all_games(self) -> List[GameEntry]:
         """Returns list of all games in library."""

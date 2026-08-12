@@ -592,6 +592,84 @@ QFrame#CollectiveLimitBanner {{
     font-weight: bold;
     color: {p['danger_text']};
 }}
+
+/* TimeEdit */
+QTimeEdit {{
+    background-color: {p['card_bg']};
+    color: {p['cyan']};
+    border: 1px solid {p['border']};
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: {fs(13)};
+    font-weight: bold;
+}}
+
+QTimeEdit:focus {{
+    border: 1px solid {p['accent']};
+}}
+
+QTimeEdit::up-button, QTimeEdit::down-button {{
+    background-color: {p['card_hover']};
+    border: none;
+    width: 18px;
+}}
+
+/* Schedule Day Checkbox & Card */
+QCheckBox#ScheduleDayCheckBox {{
+    font-size: {fs(13)};
+    font-weight: 600;
+    color: {p['text_primary']};
+    spacing: 8px;
+}}
+
+QCheckBox#ScheduleDayCheckBox::indicator {{
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    border: 1px solid {p['border']};
+    background-color: {p['card_bg']};
+}}
+
+QCheckBox#ScheduleDayCheckBox::indicator:checked {{
+    background-color: {p['accent']};
+    border-color: {p['accent']};
+}}
+
+QFrame#ScheduleCard {{
+    background-color: {p['card_bg']};
+    border: 1px solid {p['border']};
+    border-radius: 12px;
+}}
+
+#ScheduleCardTitle {{
+    font-size: {fs(16)};
+    font-weight: bold;
+    color: {p['accent']};
+}}
+
+#ScheduleCardDesc {{
+    font-size: {fs(12)};
+    color: {p['text_muted']};
+}}
+
+/* Launch Window Top Library Banner */
+QFrame#LaunchWindowBanner {{
+    background-color: {p['card_bg']};
+    border-bottom: 1px solid {p['border']};
+    padding: 4px 14px;
+}}
+
+#LaunchWindowLabel {{
+    font-size: {fs(12)};
+    font-weight: bold;
+    color: {p['success']};
+}}
+
+#LaunchWindowLabelAlert {{
+    font-size: {fs(12)};
+    font-weight: bold;
+    color: {p['danger_text']};
+}}
 """
 
 

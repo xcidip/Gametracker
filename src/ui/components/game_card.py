@@ -173,6 +173,8 @@ class GameCardWidget(QFrame):
 
     def update_action_button(self):
         is_blocked = self.game.is_limit_reached() or (self.db_manager and self.db_manager.is_collective_limit_reached())
+        is_launch_restricted = self.db_manager and not self.db_manager.is_launch_allowed_now()[0]
+
         if self.game.is_downloading:
             self.btn_action.setText(f"⏬ DOWNLOADING ({int(self.game.download_progress)}%)")
             self.btn_action.setObjectName("SecondaryButton")
@@ -189,6 +191,10 @@ class GameCardWidget(QFrame):
             self.btn_action.setText("LIMIT REACHED")
             self.btn_action.setObjectName("SecondaryButton")
             self.btn_action.setEnabled(False)
+        elif is_launch_restricted:
+            self.btn_action.setText("🔒 RESTRICTED")
+            self.btn_action.setObjectName("SecondaryButton")
+            self.btn_action.setEnabled(True)
         else:
             self.btn_action.setText("▶ LAUNCH")
             self.btn_action.setObjectName("PrimaryButton")

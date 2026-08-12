@@ -200,26 +200,22 @@ class MainWindow(QMainWindow):
 
         content_layout.addWidget(self.collective_limit_banner)
 
-        # Now Playing Active Banner (Compact & Sleek)
-        self.banner_frame = QFrame()
-        self.banner_frame.setFixedHeight(26)
-        self.banner_frame.setStyleSheet("""
-            QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #6C5CE7, stop:1 #00CEC9);
-                color: white;
-                border: none;
-            }
-        """)
-        self.banner_frame.hide()
-        banner_layout = QHBoxLayout(self.banner_frame)
-        banner_layout.setContentsMargins(14, 0, 14, 0)
-        banner_layout.setSpacing(6)
+        # Launch Window Schedule Top Banner (Shows countdown to next launch window at top of library window)
+        self.launch_window_banner = QFrame()
+        self.launch_window_banner.setObjectName("LaunchWindowBanner")
+        self.launch_window_banner.setFixedHeight(28)
+        self.launch_window_banner.hide()
 
-        self.banner_label = QLabel("🎮 NOW PLAYING: None")
-        self.banner_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #FFFFFF;")
-        banner_layout.addWidget(self.banner_label)
+        lwb_layout = QHBoxLayout(self.launch_window_banner)
+        lwb_layout.setContentsMargins(18, 0, 18, 0)
+        lwb_layout.setSpacing(8)
 
-        content_layout.addWidget(self.banner_frame)
+        self.launch_window_label = QLabel("🔒 Launching Restricted")
+        self.launch_window_label.setObjectName("LaunchWindowLabelAlert")
+        lwb_layout.addWidget(self.launch_window_label)
+        lwb_layout.addStretch()
+
+        content_layout.addWidget(self.launch_window_banner)
 
         # Stacked Views (0 = Library Grid, 1 = Stats)
         self.stacked_widget = QStackedWidget()
@@ -263,6 +259,7 @@ class MainWindow(QMainWindow):
         self.settings_view.torrent_requested.connect(self.open_torrent_dialog)
         self.settings_view.export_requested.connect(self.export_data_file)
         self.settings_view.import_requested.connect(self.import_data_file)
+        self.settings_view.remove_all_requested.connect(self.confirm_remove_all_games)
         self.settings_view.startup_toggled.connect(self.toggle_startup)
         self.settings_view.theme_changed.connect(self.apply_theme)
         self.settings_view.font_scale_changed.connect(self.change_font_scale)
@@ -437,6 +434,7 @@ class MainWindow(QMainWindow):
 
         self.main_vlayout.addStretch()
         self.update_collective_limit_banner()
+        self.update_launch_window_banner()
 
     def toggle_favorite_game(self, game_id: str):
         self.db_manager.toggle_favorite(game_id)
@@ -461,6 +459,7 @@ class MainWindow(QMainWindow):
         if self.detail_view.game and self.detail_view.game.id == game_id:
             self.detail_view.update_playtime_display(total_seconds)
         self.update_collective_limit_banner()
+        self.update_launch_window_banner()
         self.check_limit_notifications(game_id)
 
     def reset_notification_states(self):
@@ -626,21 +625,32 @@ class MainWindow(QMainWindow):
         self.collective_limit_label.setStyle(self.collective_limit_label.style())
         self.collective_limit_banner.show()
 
-    def update_now_playing_banner(self):
-        """Updates the top banner to list all currently running games."""
-        running_games = [g for g in self.db_manager.get_all_games() if g.is_running]
-        # Deduplicate running game names to prevent duplicates in banner
-        unique_names = list(dict.fromkeys(g.name for g in running_games))
+    def update_launch_window_banner(self):
+        """Updates top library banner displaying game launch schedule restriction status."""
+        if not hasattr(self, 'launch_window_banner'):
+            return
 
-        if unique_names:
-            game_names = ", ".join(unique_names)
-            if len(unique_names) > 1:
-                self.banner_label.setText(f"🎮 NOW PLAYING ({len(unique_names)}): {game_names}")
+        allowed, rem_secs, next_time_str = self.db_manager.get_time_until_launch_allowed()
+        if not allowed:
+            secs = max(0, int(rem_secs))
+            hours = secs // 3600
+            minutes = (secs % 3600) // 60
+            if hours > 0:
+                time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+            elif minutes > 0:
+                time_str = f"{minutes}m"
             else:
-                self.banner_label.setText(f"🎮 NOW PLAYING: {game_names}")
-            self.banner_frame.show()
+                time_str = f"{secs}s"
+
+            at_str = f" (at {next_time_str})" if next_time_str else ""
+            self.launch_window_label.setText(
+                f"🔒 Launching Restricted — You can launch games in {time_str}{at_str}"
+            )
+            self.launch_window_label.setObjectName("LaunchWindowLabelAlert")
+            self.launch_window_label.setStyle(self.launch_window_label.style())
+            self.launch_window_banner.show()
         else:
-            self.banner_frame.hide()
+            self.launch_window_banner.hide()
 
     def on_game_started(self, game_id: str, game_name: str):
         game = self.db_manager.get_game_by_id(game_id)
@@ -651,7 +661,6 @@ class MainWindow(QMainWindow):
             self.cards[game_id].update_action_button()
         if self.detail_view.game:
             self.detail_view.update_display()
-        self.update_now_playing_banner()
 
     def on_game_stopped(self, game_id: str, game_name: str, session_seconds: float):
         game = self.db_manager.get_game_by_id(game_id)
@@ -662,7 +671,6 @@ class MainWindow(QMainWindow):
             self.cards[game_id].update_action_button()
         if self.detail_view.game:
             self.detail_view.update_display()
-        self.update_now_playing_banner()
 
     def on_running_status_changed(self, status_dict: dict):
         for game_id, is_running in status_dict.items():
@@ -674,7 +682,6 @@ class MainWindow(QMainWindow):
                 self.cards[game_id].update_action_button()
         if self.detail_view.game:
             self.detail_view.update_display()
-        self.update_now_playing_banner()
 
     def prompt_set_play_limit(self, game_id: str):
         game = self.db_manager.get_game_by_id(game_id)
@@ -695,6 +702,27 @@ class MainWindow(QMainWindow):
     def launch_game(self, game_id: str):
         game = self.db_manager.get_game_by_id(game_id)
         if not game:
+            return
+
+        allowed_schedule, sched_reason = self.db_manager.is_launch_allowed_now()
+        if not allowed_schedule:
+            _, rem_secs, next_time_str = self.db_manager.get_time_until_launch_allowed()
+            secs = max(0, int(rem_secs))
+            hours = secs // 3600
+            minutes = (secs % 3600) // 60
+            if hours > 0:
+                time_str = f"{hours}h {minutes}m" if minutes > 0 else f"{hours}h"
+            elif minutes > 0:
+                time_str = f"{minutes}m"
+            else:
+                time_str = f"{secs}s"
+            at_str = f" (at {next_time_str})" if next_time_str else ""
+
+            QMessageBox.warning(
+                self,
+                "Game Launch Restricted",
+                f"Cannot launch '{game.name}'.\n\n{sched_reason}\n\nYou will be able to launch games in {time_str}{at_str}."
+            )
             return
 
         if self.db_manager.is_collective_limit_reached():
@@ -773,6 +801,26 @@ class MainWindow(QMainWindow):
             if self.detail_view.game and self.detail_view.game.id == game_id:
                 self.switch_view(0)
             self.reload_library_grid()
+
+    def confirm_remove_all_games(self):
+        """Prompts for confirmation before permanently deleting all games from library database."""
+        total_count = len(self.db_manager.get_all_games())
+        if total_count == 0:
+            QMessageBox.information(self, "Library Empty", "Your game library is already empty.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Remove All Games",
+            f"Are you sure you want to remove ALL {total_count} game(s) from your library collection?\n\nThis action cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        if reply == QMessageBox.StandardButton.Yes:
+            self.db_manager.remove_all_games()
+            self.switch_view(0)
+            self.reload_library_grid()
+            QMessageBox.information(self, "Library Cleared", "All games have been removed from your library collection.")
 
     def edit_game(self, game_id: str):
         game = self.db_manager.get_game_by_id(game_id)

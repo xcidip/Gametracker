@@ -169,9 +169,10 @@ class GameDetailViewWidget(QWidget):
     favorite_toggled = pyqtSignal(str)          # game_id
     set_limit_requested = pyqtSignal(str)       # game_id
 
-    def __init__(self, parent=None):
+    def __init__(self, db_manager = None, parent=None):
         super().__init__(parent)
         self.game: GameEntry = None
+        self.db_manager = db_manager
         self.init_ui()
 
     def init_ui(self):
@@ -634,6 +635,11 @@ class GameDetailViewWidget(QWidget):
             self.lbl_status_badge.setStyleSheet("background-color: #272C45; color: #FF7675; border: 1px solid #FF7675; border-radius: 6px; padding: 4px 10px; font-weight: bold; font-size: 12px;")
             self.btn_action.setText("PLAYTIME REACHED")
             self.btn_action.setEnabled(False)
+        elif self.db_manager and not self.db_manager.is_launch_allowed_now()[0]:
+            self.lbl_status_badge.setText("Launch Restricted")
+            self.lbl_status_badge.setStyleSheet("background-color: #272C45; color: #FF7675; border: 1px solid #FF7675; border-radius: 6px; padding: 4px 10px; font-weight: bold; font-size: 12px;")
+            self.btn_action.setText("🔒 LAUNCHING RESTRICTED")
+            self.btn_action.setEnabled(True)
         else:
             self.lbl_status_badge.setText("Ready to Play")
             self.lbl_status_badge.setStyleSheet("background-color: #1E2235; color: #00CEC9; border-radius: 6px; padding: 4px 10px; font-weight: bold; font-size: 12px;")
