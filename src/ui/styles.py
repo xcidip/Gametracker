@@ -70,8 +70,13 @@ THEME_PALETTES = {
 }
 
 
-def get_theme_stylesheet(theme_key: str = "dark") -> str:
+def get_theme_stylesheet(theme_key: str = "dark", font_scale: float = 1.0) -> str:
     p = THEME_PALETTES.get(theme_key.lower(), THEME_PALETTES["dark"])
+    font_scale = max(0.7, min(1.8, float(font_scale)))
+
+    def fs(px: int) -> str:
+        return f"{max(8, int(round(px * font_scale)))}px"
+
     return f"""
 QMainWindow {{
     background-color: {p['bg_main']};
@@ -89,7 +94,7 @@ QWidget {{
 }}
 
 #SidebarTitle {{
-    font-size: 20px;
+    font-size: {fs(20)};
     font-weight: bold;
     color: {p['accent']};
     padding: 15px 10px;
@@ -101,7 +106,7 @@ QWidget {{
     border-radius: 10px;
     padding: 12px 18px;
     text-align: left;
-    font-size: 14px;
+    font-size: {fs(14)};
     font-weight: 600;
     color: {p['text_muted']};
 }}
@@ -129,7 +134,7 @@ QLineEdit {{
     border-radius: 8px;
     padding: 8px 14px;
     color: {p['text_primary']};
-    font-size: 13px;
+    font-size: {fs(13)};
 }}
 
 QLineEdit:focus {{
@@ -163,7 +168,7 @@ QPushButton#PrimaryButton {{
     border-radius: 8px;
     padding: 8px 16px;
     font-weight: bold;
-    font-size: 13px;
+    font-size: {fs(13)};
 }}
 
 QPushButton#PrimaryButton:hover {{
@@ -181,7 +186,7 @@ QPushButton#SecondaryButton {{
     border-radius: 8px;
     padding: 8px 16px;
     font-weight: bold;
-    font-size: 13px;
+    font-size: {fs(13)};
 }}
 
 QPushButton#SecondaryButton:hover {{
@@ -210,7 +215,7 @@ QPushButton#ThemeButton {{
     border-radius: 8px;
     padding: 6px 14px;
     font-weight: 600;
-    font-size: 12px;
+    font-size: {fs(12)};
 }}
 
 QPushButton#ThemeButton:hover {{
@@ -222,6 +227,41 @@ QPushButton#ThemeButton:checked {{
     background-color: {p['accent']};
     color: #FFFFFF;
     border-color: {p['accent']};
+}}
+
+/* Font Size Switcher Buttons & Label */
+QPushButton#FontSizeButton {{
+    background-color: {p['card_bg']};
+    color: {p['text_primary']};
+    border: 1px solid {p['border']};
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-weight: bold;
+    font-size: {fs(14)};
+    min-width: 32px;
+}}
+
+QPushButton#FontSizeButton:hover {{
+    background-color: {p['card_hover']};
+    border-color: {p['accent']};
+}}
+
+QPushButton#FontSizeButton:pressed {{
+    background-color: {p['accent']};
+    color: #FFFFFF;
+}}
+
+QPushButton#FontSizeButton:disabled {{
+    color: {p['text_muted']};
+    border-color: {p['border']};
+    opacity: 0.5;
+}}
+
+#FontSizeLabel {{
+    font-size: {fs(13)};
+    font-weight: 600;
+    color: {p['text_primary']};
+    padding: 0 8px;
 }}
 
 /* Settings Row & Containers */
@@ -241,13 +281,13 @@ QFrame#SettingsRow:hover {{
 }}
 
 #SettingsRowTitle {{
-    font-size: 14px;
+    font-size: {fs(14)};
     font-weight: 600;
     color: {p['text_primary']};
 }}
 
 #SettingsSectionHeader {{
-    font-size: 11px;
+    font-size: {fs(11)};
     font-weight: bold;
     color: {p['accent']};
     letter-spacing: 1px;
@@ -269,13 +309,13 @@ QFrame#SectionHeader:hover {{
 
 #SectionHeaderArrow {{
     color: {p['accent']};
-    font-size: 14px;
+    font-size: {fs(14)};
     font-weight: bold;
 }}
 
 #SectionHeaderTitle {{
     color: {p['text_primary']};
-    font-size: 15px;
+    font-size: {fs(15)};
     font-weight: bold;
 }}
 
@@ -283,7 +323,7 @@ QFrame#SectionHeader:hover {{
     background-color: {p['bg_sidebar']};
     color: {p['text_muted']};
     border: 1px solid {p['border']};
-    font-size: 11px;
+    font-size: {fs(11)};
     font-weight: bold;
     border-radius: 10px;
     padding: 2px 8px;
@@ -302,7 +342,7 @@ QFrame#GameCard:hover {{
 }}
 
 #GameTitle {{
-    font-size: 14px;
+    font-size: {fs(14)};
     font-weight: bold;
     color: {p['text_primary']};
 }}
@@ -312,7 +352,7 @@ QFrame#GameCard:hover {{
     color: {p['cyan']};
     border-radius: 6px;
     padding: 3px 6px;
-    font-size: 11px;
+    font-size: {fs(11)};
     font-weight: 600;
 }}
 
@@ -323,7 +363,7 @@ QFrame#GameCard QPushButton#PrimaryButton {{
     border-radius: 6px;
     padding: 4px 10px;
     font-weight: bold;
-    font-size: 11px;
+    font-size: {fs(11)};
 }}
 
 QFrame#GameCard QPushButton#PrimaryButton:hover {{
@@ -341,7 +381,7 @@ QFrame#GameCard QPushButton#SecondaryButton {{
     border-radius: 6px;
     padding: 4px 10px;
     font-weight: bold;
-    font-size: 11px;
+    font-size: {fs(11)};
 }}
 
 QFrame#GameCard QPushButton#SecondaryButton:hover {{
@@ -354,7 +394,7 @@ QFrame#GameCard QPushButton#SecondaryButton:hover {{
     color: #FFFFFF;
     border-radius: 6px;
     padding: 3px 8px;
-    font-size: 11px;
+    font-size: {fs(11)};
     font-weight: bold;
 }}
 
@@ -363,7 +403,7 @@ QFrame#GameCard QPushButton#SecondaryButton:hover {{
     color: {p['text_muted']};
     border-radius: 6px;
     padding: 3px 8px;
-    font-size: 11px;
+    font-size: {fs(11)};
 }}
 
 /* Dialogs */
@@ -400,7 +440,7 @@ QToolTip {{
     border: 1px solid {p['accent']};
     border-radius: 6px;
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: {fs(12)};
 }}
 
 /* Scrollbars */
@@ -428,5 +468,6 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 """
 
 
-MAIN_STYLE = get_theme_stylesheet("dark")
+MAIN_STYLE = get_theme_stylesheet("dark", 1.0)
+
 

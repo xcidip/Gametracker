@@ -65,10 +65,14 @@ class MainWindow(QMainWindow):
         self.init_system_tray()
         self.connect_tracker_signals()
 
-        # Load and apply initial theme
+        # Load and apply initial theme & font scale
         settings = QSettings("GameTracker", "GameTracker")
         initial_theme = settings.value("theme", "dark")
-        self.apply_theme(str(initial_theme))
+        try:
+            initial_font_scale = float(settings.value("font_scale", 1.0))
+        except Exception:
+            initial_font_scale = 1.0
+        self.apply_theme(str(initial_theme), initial_font_scale)
 
 
     def init_ui(self):
@@ -227,6 +231,7 @@ class MainWindow(QMainWindow):
         self.settings_view.import_requested.connect(self.import_data_file)
         self.settings_view.startup_toggled.connect(self.toggle_startup)
         self.settings_view.theme_changed.connect(self.apply_theme)
+        self.settings_view.font_scale_changed.connect(self.change_font_scale)
         self.stacked_widget.addWidget(self.settings_view)
 
 
@@ -1024,26 +1029,44 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error saving window settings: {e}")
 
-    def apply_theme(self, theme_name: str):
-        """Applies stylesheet for selected theme and saves preference."""
-        if not theme_name:
-            theme_name = "dark"
-        theme_name = theme_name.lower()
-        stylesheet = get_theme_stylesheet(theme_name)
+    def apply_theme(self, theme_name: str = None, font_scale: float = None):
+        """Applies stylesheet for selected theme and font scale, saving preferences."""
+        settings = QSettings("GameTracker", "GameTracker")
+
+        if theme_name is not None:
+            self.current_theme = str(theme_name).lower()
+            try:
+                settings.setValue("theme", self.current_theme)
+            except Exception as e:
+                logger.error(f"Error saving theme setting: {e}")
+        elif not hasattr(self, 'current_theme') or not self.current_theme:
+            self.current_theme = str(settings.value("theme", "dark")).lower()
+
+        if font_scale is not None:
+            try:
+                self.font_scale = float(font_scale)
+                settings.setValue("font_scale", self.font_scale)
+            except Exception as e:
+                logger.error(f"Error saving font scale setting: {e}")
+        elif not hasattr(self, 'font_scale') or self.font_scale is None:
+            try:
+                self.font_scale = float(settings.value("font_scale", 1.0))
+            except Exception:
+                self.font_scale = 1.0
+
+        stylesheet = get_theme_stylesheet(self.current_theme, self.font_scale)
         app = QApplication.instance()
         if app:
             app.setStyleSheet(stylesheet)
         else:
             self.setStyleSheet(stylesheet)
-        
-        try:
-            settings = QSettings("GameTracker", "GameTracker")
-            settings.setValue("theme", theme_name)
-        except Exception as e:
-            logger.error(f"Error saving theme setting: {e}")
 
         if hasattr(self, 'settings_view') and self.settings_view:
-            self.settings_view.set_active_theme(theme_name)
+            self.settings_view.set_active_theme(self.current_theme)
+            self.settings_view.set_font_scale(self.font_scale)
+
+    def change_font_scale(self, font_scale: float):
+        self.apply_theme(font_scale=font_scale)
 
 
     def force_quit(self):

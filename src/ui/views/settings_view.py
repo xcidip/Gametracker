@@ -74,10 +74,12 @@ class SettingsViewWidget(QWidget):
     import_requested = pyqtSignal()
     startup_toggled = pyqtSignal()
     theme_changed = pyqtSignal(str)
+    font_scale_changed = pyqtSignal(float)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.theme_buttons = {}
+        self.current_font_scale = 1.0
         self.init_ui()
 
     def init_ui(self):
@@ -144,7 +146,38 @@ class SettingsViewWidget(QWidget):
             icon_symbol="🎨",
             action_widget=theme_widget
         )
-        group0.add_row(row_theme, is_last=True)
+        group0.add_row(row_theme, is_last=False)
+
+        # Text Resizing (Font Size) Row
+        font_size_widget = QWidget()
+        font_size_layout = QHBoxLayout(font_size_widget)
+        font_size_layout.setContentsMargins(0, 0, 0, 0)
+        font_size_layout.setSpacing(6)
+
+        self.btn_font_minus = QPushButton("➖")
+        self.btn_font_minus.setObjectName("FontSizeButton")
+        self.btn_font_minus.clicked.connect(lambda: self.change_font_scale_delta(-0.1))
+
+        self.lbl_font_size = QLabel("100%")
+        self.lbl_font_size.setObjectName("FontSizeLabel")
+        self.lbl_font_size.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        self.btn_font_plus = QPushButton("➕")
+        self.btn_font_plus.setObjectName("FontSizeButton")
+        self.btn_font_plus.clicked.connect(lambda: self.change_font_scale_delta(0.1))
+
+        font_size_layout.addWidget(self.btn_font_minus)
+        font_size_layout.addWidget(self.lbl_font_size)
+        font_size_layout.addWidget(self.btn_font_plus)
+
+        row_font_size = SettingsRow(
+            title="Text Size",
+            description="Adjust application text size for better readability.",
+            icon_symbol="🔤",
+            action_widget=font_size_widget
+        )
+        group0.add_row(row_font_size, is_last=True)
+
         scroll_layout.addWidget(group0)
 
         # ----------------------------------------------------
@@ -259,6 +292,20 @@ class SettingsViewWidget(QWidget):
             is_active = (key == active_theme_key)
             btn.setChecked(is_active)
 
+    def change_font_scale_delta(self, delta: float):
+        new_scale = round(self.current_font_scale + delta, 2)
+        new_scale = max(0.8, min(1.5, new_scale))
+        if abs(new_scale - self.current_font_scale) > 0.01:
+            self.set_font_scale(new_scale)
+            self.font_scale_changed.emit(new_scale)
+
+    def set_font_scale(self, scale: float):
+        self.current_font_scale = scale
+        percentage = int(round(scale * 100))
+        self.lbl_font_size.setText(f"{percentage}%")
+        self.btn_font_minus.setEnabled(scale > 0.81)
+        self.btn_font_plus.setEnabled(scale < 1.49)
+
     def update_startup_state(self):
         enabled = is_startup_enabled()
         self.btn_startup.setChecked(enabled)
@@ -272,4 +319,5 @@ class SettingsViewWidget(QWidget):
 
     def refresh_settings(self):
         self.update_startup_state()
+
 
