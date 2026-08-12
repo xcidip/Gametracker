@@ -20,16 +20,6 @@ class SettingsRow(QFrame):
         # Set ToolTip for hover description
         self.setToolTip(description)
 
-        self.setStyleSheet("""
-            QFrame#SettingsRow {
-                background-color: transparent;
-                border: none;
-            }
-            QFrame#SettingsRow:hover {
-                background-color: #262B42;
-            }
-        """)
-
         layout = QHBoxLayout(self)
         layout.setContentsMargins(16, 10, 16, 10)
         layout.setSpacing(14)
@@ -43,7 +33,7 @@ class SettingsRow(QFrame):
 
         # Middle Title Label
         title_lbl = QLabel(title)
-        title_lbl.setStyleSheet("font-size: 14px; font-weight: 600; color: #FFFFFF;")
+        title_lbl.setObjectName("SettingsRowTitle")
         title_lbl.setToolTip(description)
         layout.addWidget(title_lbl, stretch=1)
 
@@ -59,13 +49,7 @@ class SettingsGroupContainer(QFrame):
     """
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setStyleSheet("""
-            QFrame {
-                background-color: #1E2235;
-                border: 1px solid #2B304A;
-                border-radius: 10px;
-            }
-        """)
+        self.setObjectName("SettingsGroupContainer")
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
@@ -75,7 +59,8 @@ class SettingsGroupContainer(QFrame):
         if not is_last:
             divider = QFrame()
             divider.setFixedHeight(1)
-            divider.setStyleSheet("background-color: #2B304A; border: none;")
+            divider.setObjectName("SettingsRowDivider")
+            divider.setStyleSheet("background-color: rgba(150, 150, 150, 0.2); border: none;")
             self.layout.addWidget(divider)
 
 
@@ -88,9 +73,11 @@ class SettingsViewWidget(QWidget):
     export_requested = pyqtSignal()
     import_requested = pyqtSignal()
     startup_toggled = pyqtSignal()
+    theme_changed = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.theme_buttons = {}
         self.init_ui()
 
     def init_ui(self):
@@ -103,11 +90,11 @@ class SettingsViewWidget(QWidget):
         header_layout.setSpacing(2)
 
         title = QLabel("Settings")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #FFFFFF;")
+        title.setStyleSheet("font-size: 22px; font-weight: bold;")
         header_layout.addWidget(title)
 
         subtitle = QLabel("Hover over any option to view its description.")
-        subtitle.setStyleSheet("font-size: 12px; color: #8E9BB0;")
+        subtitle.setStyleSheet("font-size: 12px; opacity: 0.8;")
         header_layout.addWidget(subtitle)
 
         main_layout.addLayout(header_layout)
@@ -115,17 +102,7 @@ class SettingsViewWidget(QWidget):
         # Scroll Area for settings list
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("""
-            QScrollArea { border: none; background: transparent; }
-            QToolTip {
-                background-color: #141724;
-                color: #FFFFFF;
-                border: 1px solid #6C5CE7;
-                border-radius: 6px;
-                padding: 6px 10px;
-                font-size: 12px;
-            }
-        """)
+        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         scroll_content = QWidget()
         scroll_layout = QVBoxLayout(scroll_content)
@@ -133,10 +110,48 @@ class SettingsViewWidget(QWidget):
         scroll_layout.setSpacing(16)
 
         # ----------------------------------------------------
+        # Section 0: Appearance & Theme
+        # ----------------------------------------------------
+        sec0_title = QLabel("APPEARANCE & THEME")
+        sec0_title.setObjectName("SettingsSectionHeader")
+        scroll_layout.addWidget(sec0_title)
+
+        group0 = SettingsGroupContainer()
+
+        theme_widget = QWidget()
+        theme_layout = QHBoxLayout(theme_widget)
+        theme_layout.setContentsMargins(0, 0, 0, 0)
+        theme_layout.setSpacing(8)
+
+        themes_info = [
+            ("dark", "🌙 Dark"),
+            ("white", "☀️ White"),
+            ("dracula", "🔮 Dracula"),
+            ("gruvbox", "🪵 Gruvbox"),
+        ]
+
+        for theme_key, display_name in themes_info:
+            btn = QPushButton(display_name)
+            btn.setObjectName("ThemeButton")
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda checked, key=theme_key: self.theme_changed.emit(key))
+            theme_layout.addWidget(btn)
+            self.theme_buttons[theme_key] = btn
+
+        row_theme = SettingsRow(
+            title="Color Theme",
+            description="Select application color theme (Dark, White, Dracula, Gruvbox).",
+            icon_symbol="🎨",
+            action_widget=theme_widget
+        )
+        group0.add_row(row_theme, is_last=True)
+        scroll_layout.addWidget(group0)
+
+        # ----------------------------------------------------
         # Section 1: Game & App Additions
         # ----------------------------------------------------
         sec1_title = QLabel("GAME & APP ADDITIONS")
-        sec1_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #6C5CE7; letter-spacing: 1px; padding-left: 4px;")
+        sec1_title.setObjectName("SettingsSectionHeader")
         scroll_layout.addWidget(sec1_title)
 
         group1 = SettingsGroupContainer()
@@ -173,7 +188,7 @@ class SettingsViewWidget(QWidget):
         # Section 2: Data & Backup
         # ----------------------------------------------------
         sec2_title = QLabel("DATA & BACKUP MANAGEMENT")
-        sec2_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #6C5CE7; letter-spacing: 1px; padding-left: 4px;")
+        sec2_title.setObjectName("SettingsSectionHeader")
         scroll_layout.addWidget(sec2_title)
 
         group2 = SettingsGroupContainer()
@@ -210,7 +225,7 @@ class SettingsViewWidget(QWidget):
         # Section 3: System Preferences
         # ----------------------------------------------------
         sec3_title = QLabel("SYSTEM PREFERENCES")
-        sec3_title.setStyleSheet("font-size: 11px; font-weight: bold; color: #6C5CE7; letter-spacing: 1px; padding-left: 4px;")
+        sec3_title.setObjectName("SettingsSectionHeader")
         scroll_layout.addWidget(sec3_title)
 
         group3 = SettingsGroupContainer()
@@ -238,6 +253,12 @@ class SettingsViewWidget(QWidget):
 
         self.update_startup_state()
 
+    def set_active_theme(self, active_theme_key: str):
+        active_theme_key = active_theme_key.lower()
+        for key, btn in self.theme_buttons.items():
+            is_active = (key == active_theme_key)
+            btn.setChecked(is_active)
+
     def update_startup_state(self):
         enabled = is_startup_enabled()
         self.btn_startup.setChecked(enabled)
@@ -251,3 +272,4 @@ class SettingsViewWidget(QWidget):
 
     def refresh_settings(self):
         self.update_startup_state()
+

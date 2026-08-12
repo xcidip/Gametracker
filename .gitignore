@@ -19,6 +19,7 @@ venv/
 ENV/
 .vscode/
 .idea/
+.agents/
 
 # Windows temp & logs
 *.tmp

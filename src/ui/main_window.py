@@ -16,15 +16,16 @@ from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QComboBox, QStackedWidget,
     QScrollArea, QGridLayout, QMessageBox, QFrame,
-    QSystemTrayIcon, QMenu
+    QSystemTrayIcon, QMenu, QApplication
 )
 
 from src.database import DatabaseManager, GameEntry
 from src.core.tracker import TimeTrackerThread
 from src.core.startup_manager import is_startup_enabled, set_startup_enabled
 from src.core.torrent_manager import ensure_aria2_installed, TorrentDownloadWorker, launch_elevated_installer, InstallerMonitorWorker
-from src.ui.styles import MAIN_STYLE
+from src.ui.styles import MAIN_STYLE, get_theme_stylesheet
 from src.ui.components.game_card import GameCardWidget
+from src.ui.components.collapsible_section import CollapsibleSection
 from src.ui.dialogs.detector_dialog import RunningAppDetectorDialog
 from src.ui.dialogs.add_game_dialog import AddGameDialog
 from src.ui.dialogs.torrent_dialog import TorrentDownloadDialog
@@ -55,15 +56,20 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1270, 600)
         self.restore_window_settings()
 
-        # Apply dark theme style
-        self.setStyleSheet(MAIN_STYLE)
-
         self.cards: Dict[str, GameCardWidget] = {}
+        self.sections: Dict[str, CollapsibleSection] = {}
+        self.section_collapsed_states: Dict[str, bool] = {"favorites": False, "other": False}
         self.current_columns = 0
 
         self.init_ui()
         self.init_system_tray()
         self.connect_tracker_signals()
+
+        # Load and apply initial theme
+        settings = QSettings("GameTracker", "GameTracker")
+        initial_theme = settings.value("theme", "dark")
+        self.apply_theme(str(initial_theme))
+
 
     def init_ui(self):
         main_widget = QWidget()
@@ -192,10 +198,10 @@ class MainWindow(QMainWindow):
         self.library_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
 
         self.grid_container = QWidget()
-        self.grid_layout = QGridLayout(self.grid_container)
-        self.grid_layout.setContentsMargins(20, 20, 20, 20)
-        self.grid_layout.setSpacing(18)
-        self.grid_layout.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft)
+        self.main_vlayout = QVBoxLayout(self.grid_container)
+        self.main_vlayout.setContentsMargins(20, 20, 20, 20)
+        self.main_vlayout.setSpacing(20)
+        self.main_vlayout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         self.library_scroll.setWidget(self.grid_container)
         self.stacked_widget.addWidget(self.library_scroll)
@@ -220,7 +226,9 @@ class MainWindow(QMainWindow):
         self.settings_view.export_requested.connect(self.export_data_file)
         self.settings_view.import_requested.connect(self.import_data_file)
         self.settings_view.startup_toggled.connect(self.toggle_startup)
+        self.settings_view.theme_changed.connect(self.apply_theme)
         self.stacked_widget.addWidget(self.settings_view)
+
 
         # View 5: Game Detail View (Takes up entire library screen)
         self.detail_view = GameDetailViewWidget()
@@ -283,18 +291,15 @@ class MainWindow(QMainWindow):
 
     def rearrange_library_grid(self, columns: int):
         self.current_columns = columns
-        if not hasattr(self, 'cards') or not self.cards:
+        if not hasattr(self, 'sections') or not self.sections:
             return
-        cards_list = list(self.cards.values())
-        for idx, card in enumerate(cards_list):
-            row = idx // columns
-            col = idx % columns
-            self.grid_layout.addWidget(card, row, col)
+        for section in self.sections.values():
+            section.rearrange_cards(columns)
 
     def reload_library_grid(self):
-        # Clear existing card widgets safely (hide first to avoid temporary top-level floating window artifact)
-        while self.grid_layout.count():
-            item = self.grid_layout.takeAt(0)
+        # Clear existing section widgets safely (hide first to avoid temporary top-level floating window artifact)
+        while self.main_vlayout.count():
+            item = self.main_vlayout.takeAt(0)
             if item:
                 widget = item.widget()
                 if widget:
@@ -303,6 +308,7 @@ class MainWindow(QMainWindow):
                     widget.deleteLater()
 
         self.cards.clear()
+        self.sections.clear()
 
         games = self.db_manager.get_all_games()
         query = self.search_bar.text().lower().strip()
@@ -310,34 +316,41 @@ class MainWindow(QMainWindow):
         if query:
             games = [g for g in games if query in g.name.lower() or query in g.process_name.lower()]
 
-        # Sorting logic (Favorited games always pinned at the top)
-        sort_idx = self.sort_combo.currentIndex()
-        if sort_idx == 0:  # Playtime
-            games.sort(key=lambda g: (not g.is_favorite, -g.playtime))
-        elif sort_idx == 1:  # Name A-Z
-            games.sort(key=lambda g: (not g.is_favorite, g.name.lower()))
-        elif sort_idx == 2:  # Recently played
-            def _recent_key(g):
-                if not g.last_played or g.last_played == "Never":
-                    return (not g.is_favorite, 1, ())
-                try:
-                    parts = [int(p) for p in g.last_played.replace('-', ' ').replace(':', ' ').split()]
-                    return (not g.is_favorite, 0, tuple(-p for p in parts))
-                except Exception:
-                    return (not g.is_favorite, 1, ())
-            games.sort(key=_recent_key)
-
         if not games:
             empty_msg = QLabel("No games or apps found in library.\nClick '⚡ Detect Apps' or '＋ Add Custom .EXE' to get started!")
             empty_msg.setStyleSheet("color: #8E9BB0; font-size: 15px; text-align: center; padding: 50px;")
             empty_msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.grid_layout.addWidget(empty_msg, 0, 0, 1, 3)
+            self.main_vlayout.addWidget(empty_msg)
             return
 
         columns = self.calculate_target_columns()
         self.current_columns = columns
 
-        for idx, game in enumerate(games):
+        # Separate games into favorite and non-favorite lists
+        favorite_games = [g for g in games if g.is_favorite]
+        other_games = [g for g in games if not g.is_favorite]
+
+        # Sorting logic
+        sort_idx = self.sort_combo.currentIndex()
+        def get_sort_key(g):
+            if sort_idx == 0:  # Playtime
+                return -g.playtime
+            elif sort_idx == 1:  # Name A-Z
+                return g.name.lower()
+            elif sort_idx == 2:  # Recently played
+                if not g.last_played or g.last_played == "Never":
+                    return (1, ())
+                try:
+                    parts = [int(p) for p in g.last_played.replace('-', ' ').replace(':', ' ').split()]
+                    return (0, tuple(-p for p in parts))
+                except Exception:
+                    return (1, ())
+            return 0
+
+        favorite_games.sort(key=get_sort_key)
+        other_games.sort(key=get_sort_key)
+
+        def create_card(game):
             card = GameCardWidget(game)
             card.launch_requested.connect(self.launch_game)
             card.remove_requested.connect(self.remove_game)
@@ -347,11 +360,40 @@ class MainWindow(QMainWindow):
             card.favorite_toggled.connect(self.toggle_favorite_game)
             card.set_limit_requested.connect(self.prompt_set_play_limit)
             card.card_clicked.connect(self.open_game_detail)
-
-            row = idx // columns
-            col = idx % columns
-            self.grid_layout.addWidget(card, row, col)
             self.cards[game.id] = card
+            return card
+
+        # 1. Favorite Section
+        if favorite_games:
+            fav_section = CollapsibleSection(
+                key="favorites",
+                title="Oblíbené aplikace",
+                icon="⭐",
+                is_collapsed=self.section_collapsed_states.get("favorites", False)
+            )
+            fav_section.toggled.connect(lambda collapsed: self.section_collapsed_states.update({"favorites": collapsed}))
+            fav_cards = [create_card(g) for g in favorite_games]
+            fav_section.set_cards(fav_cards, columns)
+            self.main_vlayout.addWidget(fav_section)
+            self.sections["favorites"] = fav_section
+
+        # 2. Other Section
+        if other_games:
+            other_title = "Ostatní aplikace" if favorite_games else "Všechny aplikace"
+            other_icon = "📱" if favorite_games else "🎮"
+            other_section = CollapsibleSection(
+                key="other",
+                title=other_title,
+                icon=other_icon,
+                is_collapsed=self.section_collapsed_states.get("other", False)
+            )
+            other_section.toggled.connect(lambda collapsed: self.section_collapsed_states.update({"other": collapsed}))
+            other_cards = [create_card(g) for g in other_games]
+            other_section.set_cards(other_cards, columns)
+            self.main_vlayout.addWidget(other_section)
+            self.sections["other"] = other_section
+
+        self.main_vlayout.addStretch()
 
     def toggle_favorite_game(self, game_id: str):
         self.db_manager.toggle_favorite(game_id)
@@ -981,6 +1023,28 @@ class MainWindow(QMainWindow):
                 settings.setValue("windowState", self.saveState())
         except Exception as e:
             logger.error(f"Error saving window settings: {e}")
+
+    def apply_theme(self, theme_name: str):
+        """Applies stylesheet for selected theme and saves preference."""
+        if not theme_name:
+            theme_name = "dark"
+        theme_name = theme_name.lower()
+        stylesheet = get_theme_stylesheet(theme_name)
+        app = QApplication.instance()
+        if app:
+            app.setStyleSheet(stylesheet)
+        else:
+            self.setStyleSheet(stylesheet)
+        
+        try:
+            settings = QSettings("GameTracker", "GameTracker")
+            settings.setValue("theme", theme_name)
+        except Exception as e:
+            logger.error(f"Error saving theme setting: {e}")
+
+        if hasattr(self, 'settings_view') and self.settings_view:
+            self.settings_view.set_active_theme(theme_name)
+
 
     def force_quit(self):
         self.save_window_settings()
