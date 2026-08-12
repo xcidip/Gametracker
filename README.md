@@ -47,32 +47,6 @@ python build_installer.py
 ```
 *(Alternatively, run `build.bat` on Windows)*
 
-## Project Structure
-
-```text
-Gametracker/
-├── main.py                # Application entry point & Qt initialization
-├── config.py              # Application settings, paths, and color palette
-├── database.py            # Persistence layer (JSON storage & backup/restore)
-├── tracker.py             # Real-time process monitoring & active window tracker
-├── icon_extractor.py      # Win32 C API icon extractor & fallback image generator
-├── torrent_manager.py     # Background aria2c torrent manager & installer monitor
-├── startup_manager.py     # Windows Registry startup integration
-├── build_exe.py           # PyInstaller packaging script
-├── build_installer.py     # Inno Setup installer build script
-├── installer.iss          # Inno Setup script configuration
-├── build.bat              # Batch build launcher
-├── requirements.txt       # Python dependencies
-└── ui/
-    ├── main_window.py     # Main UI window and system tray handler
-    ├── game_card.py       # Library card component with progress tracking
-    ├── detector_dialog.py # Active process detector modal
-    ├── torrent_dialog.py  # Magnet link & .torrent file download modal
-    ├── add_game_dialog.py # Manual .exe selection dialog
-    ├── stats_view.py      # Analytics & playtime statistics view
-    └── styles.py          # Dark theme Qt stylesheet
-```
-
 ## License
 
 Distributed under the MIT License.

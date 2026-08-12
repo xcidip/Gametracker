@@ -51,8 +51,8 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Game & App Playtime Tracker")
         self.setWindowIcon(create_app_icon())
-        self.resize(1100, 720)
-        self.setMinimumSize(900, 600)
+        self.resize(1269, 720)
+        self.setMinimumSize(1270, 600)
         self.restore_window_settings()
 
         # Apply dark theme style
@@ -255,7 +255,11 @@ class MainWindow(QMainWindow):
 
         self.stacked_widget.setCurrentIndex(index)
 
-        if index == 1:
+        if index == 0:
+            new_columns = self.calculate_target_columns()
+            if new_columns != self.current_columns:
+                self.rearrange_library_grid(new_columns)
+        elif index == 1:
             self.stats_view.refresh_stats()
         elif index == 2:
             self.debug_view.refresh_info()
@@ -269,6 +273,13 @@ class MainWindow(QMainWindow):
         if game:
             self.detail_view.set_game(game)
             self.switch_view(5)
+
+    def calculate_target_columns(self) -> int:
+        if hasattr(self, 'library_scroll') and self.library_scroll.isVisible() and self.library_scroll.viewport().width() > 100:
+            avail_width = self.library_scroll.viewport().width()
+        else:
+            avail_width = max(600, self.width() - 230)
+        return max(3, (avail_width - 40) // 205)
 
     def rearrange_library_grid(self, columns: int):
         self.current_columns = columns
@@ -323,8 +334,7 @@ class MainWindow(QMainWindow):
             self.grid_layout.addWidget(empty_msg, 0, 0, 1, 3)
             return
 
-        avail_width = self.library_scroll.width() if hasattr(self, 'library_scroll') and self.library_scroll.width() > 0 else (self.width() - 260)
-        columns = max(3, (avail_width - 40) // 250)
+        columns = self.calculate_target_columns()
         self.current_columns = columns
 
         for idx, game in enumerate(games):
@@ -558,8 +568,20 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error Importing Data", f"Failed to import data file:\n{e}")
 
+    def cleanup_system_tray(self):
+        """Safely hides and removes system tray icon to prevent ghost tray icons in Windows."""
+        if hasattr(self, 'tray_icon') and self.tray_icon is not None:
+            try:
+                self.tray_icon.hide()
+                self.tray_icon.deleteLater()
+                self.tray_icon = None
+            except Exception as e:
+                logger.debug(f"Error cleaning up system tray icon: {e}")
+
     def init_system_tray(self):
         """Initializes system tray icon and context menu for silent background tracking."""
+        self.cleanup_system_tray()
+
         self.tray_icon = QSystemTrayIcon(self)
         
         # Use custom gaming application icon
@@ -972,18 +994,24 @@ class MainWindow(QMainWindow):
         self.save_window_settings()
         super().hideEvent(event)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        if hasattr(self, 'stacked_widget') and self.stacked_widget.currentIndex() == 0:
+            new_columns = self.calculate_target_columns()
+            if new_columns != self.current_columns:
+                self.rearrange_library_grid(new_columns)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         if hasattr(self, 'stacked_widget') and self.stacked_widget.currentIndex() == 0:
-            avail_width = self.library_scroll.width() if hasattr(self, 'library_scroll') and self.library_scroll.width() > 0 else (self.width() - 260)
-            new_columns = max(3, (avail_width - 40) // 250)
+            new_columns = self.calculate_target_columns()
             if new_columns != self.current_columns:
                 self.rearrange_library_grid(new_columns)
 
     def closeEvent(self, event):
         self.save_window_settings()
         if self.is_force_quitting:
-            self.tray_icon.hide()
+            self.cleanup_system_tray()
             self.tracker_thread.stop()
             self.db_manager.save()
             event.accept()
@@ -991,7 +1019,7 @@ class MainWindow(QMainWindow):
             # Hide to system tray instead of exiting
             event.ignore()
             self.hide()
-            if self.tray_icon.isSystemTrayAvailable():
+            if hasattr(self, 'tray_icon') and self.tray_icon and self.tray_icon.isSystemTrayAvailable():
                 self.tray_icon.showMessage(
                     "GameTracker Running in Background",
                     "GameTracker is still actively tracking your app & game playtime in the background. Click the system tray icon to open.",

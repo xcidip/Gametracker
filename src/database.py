@@ -57,7 +57,7 @@ class GameEntry:
         # Weekly limit & tracking properties
         self.weekly_playtime = float(weekly_playtime)
         self.weekly_start_date = weekly_start_date or get_current_week_start()
-        self.play_time_limit = float(play_time_limit)
+        self.play_time_limit = float(play_time_limit or 0.0)
 
         # Download properties
         self.is_downloading = is_downloading

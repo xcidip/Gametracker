@@ -155,7 +155,7 @@ class GameCardWidget(QFrame):
         else:
             self.progress_bar.hide()
             if self.game.play_time_limit > 0:
-                self.playtime_label.setText(f"Playtime: {self.game.formatted_playtime()} (Week: {self.game.formatted_weekly_playtime()}/{self.game.play_time_limit:.1f}h)")
+                self.playtime_label.setText(f"Week: {self.game.formatted_weekly_playtime()}/{self.game.play_time_limit:.1f}h")
             else:
                 self.playtime_label.setText(f"Playtime: {self.game.formatted_playtime()}")
         
@@ -199,7 +199,7 @@ class GameCardWidget(QFrame):
         if not self.game.is_downloading:
             self.game.playtime = total_seconds
             if self.game.play_time_limit > 0:
-                self.playtime_label.setText(f"Playtime: {format_playtime(total_seconds)} (Week: {self.game.formatted_weekly_playtime()}/{self.game.play_time_limit:.1f}h)")
+                self.playtime_label.setText(f"Week: {self.game.formatted_weekly_playtime()}/{self.game.play_time_limit:.1f}h")
             else:
                 self.playtime_label.setText(f"Playtime: {format_playtime(total_seconds)}")
             self.update_action_button()
