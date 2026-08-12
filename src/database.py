@@ -41,6 +41,7 @@ class GameEntry:
         weekly_playtime: float = 0.0,
         weekly_start_date: str = "",
         play_time_limit: float = 0.0,
+        play_sessions: Optional[List[dict]] = None,
     ):
         self.id = game_id or str(uuid.uuid4())
         self.name = name
@@ -69,6 +70,9 @@ class GameEntry:
         self.needs_installation = needs_installation
         self.installer_path = installer_path
 
+        # Play session launch history
+        self.play_sessions: List[dict] = play_sessions if play_sessions is not None else []
+
     def check_and_reset_weekly_playtime(self):
         """Resets weekly playtime if current week has rolled over (new week starting Monday)."""
         current_week = get_current_week_start()
@@ -82,6 +86,98 @@ class GameEntry:
             return False
         self.check_and_reset_weekly_playtime()
         return (self.weekly_playtime / 3600.0) >= self.play_time_limit
+
+    def add_play_session(self, start_time: str, end_time: str, duration: float):
+        """Records a completed app launch session with start time, end time, and duration."""
+        if duration <= 0:
+            return
+        self.play_sessions.append({
+            "start_time": start_time,
+            "end_time": end_time,
+            "duration": round(float(duration), 2)
+        })
+
+    def get_current_week_daily_breakdown(self) -> Dict[str, float]:
+        """
+        Returns a dictionary mapping ISO date strings (YYYY-MM-DD) for each day of the current week
+        (Monday to Sunday) to total playtime in seconds on that day.
+        """
+        self.check_and_reset_weekly_playtime()
+        current_monday = datetime.strptime(get_current_week_start(), "%Y-%m-%d").date()
+        daily_totals = {}
+        for i in range(7):
+            day_date = current_monday + timedelta(days=i)
+            daily_totals[day_date.isoformat()] = 0.0
+
+        for sess in self.play_sessions:
+            st_raw = sess.get("start_time", "")
+            duration = float(sess.get("duration", 0.0))
+            if not st_raw or duration <= 0:
+                continue
+            try:
+                if "T" in st_raw:
+                    dt = datetime.fromisoformat(st_raw)
+                else:
+                    dt = datetime.strptime(st_raw, "%Y-%m-%d %H:%M:%S")
+                sess_date_str = dt.date().isoformat()
+                if sess_date_str in daily_totals:
+                    daily_totals[sess_date_str] += duration
+            except Exception:
+                continue
+
+        # If total calculated from sessions is 0 but weekly_playtime > 0, attribute weekly_playtime to today
+        if sum(daily_totals.values()) == 0 and self.weekly_playtime > 0:
+            today_str = datetime.now().date().isoformat()
+            if today_str in daily_totals:
+                daily_totals[today_str] = self.weekly_playtime
+
+        return daily_totals
+
+    def get_current_week_stats(self) -> Dict[str, Any]:
+        """
+        Calculates comprehensive current week statistics from recorded play sessions.
+        """
+        daily = self.get_current_week_daily_breakdown()
+        current_monday = datetime.strptime(get_current_week_start(), "%Y-%m-%d").date()
+        current_sunday = current_monday + timedelta(days=6)
+
+        week_sessions = []
+        for sess in self.play_sessions:
+            st_raw = sess.get("start_time", "")
+            duration = float(sess.get("duration", 0.0))
+            if not st_raw:
+                continue
+            try:
+                if "T" in st_raw:
+                    dt = datetime.fromisoformat(st_raw)
+                else:
+                    dt = datetime.strptime(st_raw, "%Y-%m-%d %H:%M:%S")
+                if current_monday <= dt.date() <= current_sunday:
+                    week_sessions.append(sess)
+            except Exception:
+                continue
+
+        total_weekly_secs = max(self.weekly_playtime, sum(daily.values()))
+        session_count = len(week_sessions)
+        avg_session = total_weekly_secs / session_count if session_count > 0 else 0.0
+
+        peak_date_str = max(daily, key=daily.get) if daily else ""
+        peak_secs = daily.get(peak_date_str, 0.0) if peak_date_str else 0.0
+        if peak_date_str and peak_secs > 0:
+            peak_dt = datetime.strptime(peak_date_str, "%Y-%m-%d")
+            peak_day_name = peak_dt.strftime("%A")
+        else:
+            peak_day_name = "N/A"
+
+        return {
+            "total_playtime": total_weekly_secs,
+            "session_count": session_count,
+            "avg_session_duration": avg_session,
+            "peak_day_name": peak_day_name,
+            "peak_day_seconds": peak_secs,
+            "daily_breakdown": daily,
+            "sessions": week_sessions,
+        }
 
     def to_dict(self) -> dict:
         self.check_and_reset_weekly_playtime()
@@ -107,6 +203,7 @@ class GameEntry:
             "torrent_source": self.torrent_source,
             "needs_installation": self.needs_installation,
             "installer_path": self.installer_path,
+            "play_sessions": self.play_sessions,
         }
 
     @classmethod
@@ -133,6 +230,7 @@ class GameEntry:
             torrent_source=data.get("torrent_source", ""),
             needs_installation=data.get("needs_installation", False),
             installer_path=data.get("installer_path", ""),
+            play_sessions=data.get("play_sessions", []),
         )
 
     def formatted_playtime(self, verbose: bool = False) -> str:
@@ -199,6 +297,9 @@ class DatabaseManager:
                     existing.icon_path = g.icon_path
                 if not existing.launch_args and g.launch_args:
                     existing.launch_args = g.launch_args
+                for sess in g.play_sessions:
+                    if sess not in existing.play_sessions:
+                        existing.play_sessions.append(sess)
             else:
                 seen_keys[key] = g.id
                 unique_games[g.id] = g
@@ -322,6 +423,13 @@ class DatabaseManager:
             game.playtime += elapsed_seconds
             game.weekly_playtime += elapsed_seconds
             game.last_played = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    def record_game_session(self, game_id: str, start_time: str, end_time: str, duration: float):
+        """Records a launch session for a game and saves the database."""
+        game = self.games.get(game_id)
+        if game:
+            game.add_play_session(start_time, end_time, duration)
+            self.save()
 
     def set_play_time_limit(self, game_id: str, limit_hours: float):
         """Sets the weekly play limit in hours for a specific game and saves the database."""

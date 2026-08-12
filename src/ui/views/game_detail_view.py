@@ -8,8 +8,11 @@ project_root = Path(__file__).resolve().parent.parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
-from PyQt6.QtGui import QPixmap, QCursor, QFont
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional
+
+from PyQt6.QtCore import Qt, pyqtSignal, QSize, QRectF
+from PyQt6.QtGui import QPixmap, QCursor, QFont, QPainter, QColor, QBrush, QPen, QLinearGradient
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QFrame, QGridLayout, QScrollArea, QMessageBox, QApplication
@@ -19,6 +22,137 @@ from src.database import GameEntry
 from src.config import format_playtime
 
 logger = logging.getLogger("GameDetailView")
+
+
+class WeeklyStatsGraphWidget(QWidget):
+    """
+    Custom bar chart graph widget displaying current week daily playtime (Mon-Sun).
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.daily_breakdown: Dict[str, float] = {}
+        self.setMinimumHeight(200)
+        self.setStyleSheet("background: transparent;")
+
+    def set_data(self, daily_breakdown: Dict[str, float]):
+        self.daily_breakdown = daily_breakdown or {}
+        self.update()
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        width = self.width()
+        height = self.height()
+
+        # Background Card Frame
+        bg_rect = QRectF(0, 0, width, height)
+        painter.setPen(QPen(QColor("#2B304A"), 1))
+        painter.setBrush(QBrush(QColor("#1A1D2C")))
+        painter.drawRoundedRect(bg_rect, 12, 12)
+
+        if not self.daily_breakdown:
+            return
+
+        dates = list(self.daily_breakdown.keys())  # Expecting 7 dates (Mon-Sun)
+        values = [self.daily_breakdown[d] for d in dates]
+
+        max_val = max(values) if values else 0.0
+        # Set minimum scale to 30 mins (1800s) if max is low so small playtimes render visibly
+        scale_max = max(1800.0, max_val * 1.15)
+
+        padding_left = 24
+        padding_right = 24
+        padding_top = 40
+        padding_bottom = 50
+
+        chart_width = width - padding_left - padding_right
+        chart_height = height - padding_top - padding_bottom
+
+        num_bars = len(dates)
+        if num_bars == 0:
+            return
+
+        slot_width = chart_width / num_bars
+        bar_width = min(44.0, slot_width * 0.55)
+
+        today_str = datetime.now().date().isoformat()
+
+        # Horizontal Grid Lines
+        painter.setPen(QPen(QColor("#272C45"), 1, Qt.PenStyle.DashLine))
+        for ratio in [0.25, 0.5, 0.75, 1.0]:
+            y_pos = padding_top + chart_height * (1.0 - ratio)
+            painter.drawLine(int(padding_left), int(y_pos), int(width - padding_right), int(y_pos))
+
+        # Render Bars
+        for i, date_str in enumerate(dates):
+            val_secs = values[i]
+            x_center = padding_left + i * slot_width + slot_width / 2.0
+            x_left = x_center - bar_width / 2.0
+
+            ratio = min(1.0, val_secs / scale_max) if scale_max > 0 else 0.0
+            bar_h = max(6.0, chart_height * ratio) if val_secs > 0 else 4.0
+
+            y_top = padding_top + chart_height - bar_h
+
+            is_today = (date_str == today_str)
+
+            # Bar Gradient & Color
+            if val_secs > 0:
+                if is_today:
+                    grad = QLinearGradient(x_left, y_top, x_left, y_top + bar_h)
+                    grad.setColorAt(0.0, QColor("#00CEC9"))
+                    grad.setColorAt(1.0, QColor("#00B894"))
+                    painter.setBrush(QBrush(grad))
+                    painter.setPen(QPen(QColor("#55E6C1"), 1.5))
+                else:
+                    grad = QLinearGradient(x_left, y_top, x_left, y_top + bar_h)
+                    grad.setColorAt(0.0, QColor("#6C5CE7"))
+                    grad.setColorAt(1.0, QColor("#A29BFE"))
+                    painter.setBrush(QBrush(grad))
+                    painter.setPen(QPen(QColor("#81ECEC"), 1 if val_secs > 0 else 0))
+            else:
+                if is_today:
+                    painter.setBrush(QBrush(QColor("#1E2235")))
+                    painter.setPen(QPen(QColor("#00CEC9"), 1, Qt.PenStyle.DashLine))
+                else:
+                    painter.setBrush(QBrush(QColor("#1E2235")))
+                    painter.setPen(QPen(QColor("#2B304A"), 1))
+
+            # Draw bar with rounded top corners
+            bar_rect = QRectF(x_left, y_top, bar_width, bar_h)
+            painter.drawRoundedRect(bar_rect, 6, 6)
+
+            # Value text on top of bar
+            if val_secs > 0:
+                txt_val = format_playtime(val_secs, verbose=False)
+                painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
+                painter.setPen(QPen(QColor("#00CEC9") if is_today else QColor("#A29BFE")))
+                painter.drawText(
+                    QRectF(x_center - slot_width / 2.0, y_top - 22, slot_width, 18),
+                    Qt.AlignmentFlag.AlignCenter,
+                    txt_val
+                )
+
+            # X-Axis Day & Date Labels
+            try:
+                dt = datetime.strptime(date_str, "%Y-%m-%d")
+                day_name = dt.strftime("%a")
+                day_num = dt.strftime("%d %b")
+            except Exception:
+                day_name = f"D{i+1}"
+                day_num = ""
+
+            lbl_color = QColor("#00CEC9") if is_today else QColor("#8E9BB0")
+            painter.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold if is_today else QFont.Weight.Normal))
+            painter.setPen(QPen(lbl_color))
+
+            label_text = f"{day_name}\n{day_num}" if day_num else day_name
+            painter.drawText(
+                QRectF(x_center - slot_width / 2.0, padding_top + chart_height + 8, slot_width, 36),
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop,
+                label_text
+            )
 
 
 class GameDetailViewWidget(QWidget):
@@ -249,7 +383,65 @@ class GameDetailViewWidget(QWidget):
 
         layout.addWidget(hero_card)
 
-        # 3. Details & Information Cards Grid
+        # 3. Current Week Stat Board Section (KPIs + Visual Graph + Session Log)
+        stat_board_title = QLabel("📊 CURRENT WEEK PLAYTIME & ANALYTICS")
+        stat_board_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #8E9BB0; letter-spacing: 1px;")
+        layout.addWidget(stat_board_title)
+
+        stat_board_card = QFrame()
+        stat_board_card.setObjectName("StatBoardCard")
+        stat_board_card.setStyleSheet("""
+            QFrame#StatBoardCard {
+                background-color: #141724;
+                border: 1px solid #2B304A;
+                border-radius: 16px;
+                padding: 20px;
+            }
+        """)
+        sb_layout = QVBoxLayout(stat_board_card)
+        sb_layout.setContentsMargins(16, 16, 16, 16)
+        sb_layout.setSpacing(16)
+
+        # Weekly KPI Summary Row (4 metric boxes)
+        kpi_grid = QGridLayout()
+        kpi_grid.setSpacing(12)
+
+        self.card_wk_total = self._create_info_card("📅 THIS WEEK TOTAL", "--", "#00CEC9")
+        kpi_grid.addWidget(self.card_wk_total, 0, 0)
+
+        self.card_wk_sessions = self._create_info_card("🕹️ WEEKLY SESSIONS", "--", "#6C5CE7")
+        kpi_grid.addWidget(self.card_wk_sessions, 0, 1)
+
+        self.card_wk_avg = self._create_info_card("⏱️ AVG SESSION TIME", "--", "#FDCB6E")
+        kpi_grid.addWidget(self.card_wk_avg, 0, 2)
+
+        self.card_wk_peak = self._create_info_card("🌟 PEAK PLAY DAY", "--", "#FF7675")
+        kpi_grid.addWidget(self.card_wk_peak, 0, 3)
+
+        sb_layout.addLayout(kpi_grid)
+
+        # Weekly Bar Chart Graph
+        graph_header = QLabel("CURRENT WEEK DAILY BREAKDOWN (MON - SUN)")
+        graph_header.setStyleSheet("font-size: 11px; font-weight: bold; color: #8E9BB0; letter-spacing: 1px;")
+        sb_layout.addWidget(graph_header)
+
+        self.weekly_graph = WeeklyStatsGraphWidget()
+        sb_layout.addWidget(self.weekly_graph)
+
+        # Recent Launch Sessions History Container
+        session_log_header = QLabel("RECENT LAUNCH SESSIONS HISTORY")
+        session_log_header.setStyleSheet("font-size: 11px; font-weight: bold; color: #8E9BB0; letter-spacing: 1px;")
+        sb_layout.addWidget(session_log_header)
+
+        self.session_history_container = QWidget()
+        self.session_history_layout = QVBoxLayout(self.session_history_container)
+        self.session_history_layout.setContentsMargins(0, 0, 0, 0)
+        self.session_history_layout.setSpacing(8)
+        sb_layout.addWidget(self.session_history_container)
+
+        layout.addWidget(stat_board_card)
+
+        # 4. Details & Information Cards Grid
         info_label = QLabel("GAME STATISTICS & DETAILS")
         info_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #8E9BB0; letter-spacing: 1px;")
         layout.addWidget(info_label)
@@ -448,6 +640,34 @@ class GameDetailViewWidget(QWidget):
             self.btn_action.setText("▶ LAUNCH GAME")
             self.btn_action.setEnabled(True)
 
+        # Update Weekly Stat Board
+        wk_stats = self.game.get_current_week_stats()
+
+        val_wk_tot = self.card_wk_total.findChild(QLabel, "CardValue")
+        if val_wk_tot:
+            val_wk_tot.setText(format_playtime(wk_stats["total_playtime"], verbose=True))
+
+        val_wk_sess = self.card_wk_sessions.findChild(QLabel, "CardValue")
+        if val_wk_sess:
+            cnt = wk_stats["session_count"]
+            val_wk_sess.setText(f"{cnt} launch{'es' if cnt != 1 else ''}")
+
+        val_wk_avg = self.card_wk_avg.findChild(QLabel, "CardValue")
+        if val_wk_avg:
+            val_wk_avg.setText(format_playtime(wk_stats["avg_session_duration"], verbose=False))
+
+        val_wk_peak = self.card_wk_peak.findChild(QLabel, "CardValue")
+        if val_wk_peak:
+            p_day = wk_stats["peak_day_name"]
+            p_secs = wk_stats["peak_day_seconds"]
+            if p_secs > 0:
+                val_wk_peak.setText(f"{p_day}\n({format_playtime(p_secs)})")
+            else:
+                val_wk_peak.setText("N/A")
+
+        self.weekly_graph.set_data(wk_stats["daily_breakdown"])
+        self.update_session_history_list(wk_stats["sessions"])
+
         # Update Info Cards
         val_playtime = self.card_playtime.findChild(QLabel, "CardValue")
         if val_playtime:
@@ -481,6 +701,51 @@ class GameDetailViewWidget(QWidget):
         val_args = self.card_launch_args.findChild(QLabel, "CardValue")
         if val_args:
             val_args.setText(self.game.launch_args if self.game.launch_args else "None")
+
+    def update_session_history_list(self, sessions: List[Dict[str, Any]]):
+        while self.session_history_layout.count():
+            item = self.session_history_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        if not sessions:
+            empty_lbl = QLabel("No launch sessions recorded for this week yet.")
+            empty_lbl.setStyleSheet("color: #8E9BB0; font-style: italic; font-size: 12px; padding: 4px;")
+            self.session_history_layout.addWidget(empty_lbl)
+            return
+
+        sorted_sessions = list(reversed(sessions))[:5]
+
+        for sess in sorted_sessions:
+            st = sess.get("start_time", "N/A")
+            et = sess.get("end_time", "N/A")
+            dur = float(sess.get("duration", 0.0))
+
+            row = QFrame()
+            row.setStyleSheet("""
+                QFrame {
+                    background-color: #1E2235;
+                    border: 1px solid #2B304A;
+                    border-radius: 8px;
+                    padding: 8px 12px;
+                }
+            """)
+            r_box = QHBoxLayout(row)
+            r_box.setContentsMargins(10, 6, 10, 6)
+
+            lbl_icon = QLabel("🚀")
+            lbl_icon.setStyleSheet("font-size: 14px;")
+            r_box.addWidget(lbl_icon)
+
+            lbl_time = QLabel(f"Launched: {st}   →   Closed: {et}")
+            lbl_time.setStyleSheet("font-size: 12px; color: #E1E7ED; font-family: 'Segoe UI', sans-serif;")
+            r_box.addWidget(lbl_time, stretch=1)
+
+            lbl_dur = QLabel(format_playtime(dur, verbose=False))
+            lbl_dur.setStyleSheet("font-size: 13px; font-weight: bold; color: #00CEC9;")
+            r_box.addWidget(lbl_dur)
+
+            self.session_history_layout.addWidget(row)
 
     def update_playtime_display(self, total_seconds: float):
         if self.game and not self.game.is_downloading:

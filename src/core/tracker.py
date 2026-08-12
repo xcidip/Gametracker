@@ -107,6 +107,7 @@ class TimeTrackerThread(QThread):
         self._running = True
         self.active_sessions: Dict[str, float] = {}  # game_id -> session_start_time
         self.session_elapsed: Dict[str, float] = {}   # game_id -> accumulated session seconds
+        self.session_start_formatted: Dict[str, str] = {} # game_id -> start time string
         self.last_running_state: Dict[str, bool] = {}
 
     def stop(self):
@@ -162,7 +163,9 @@ class TimeTrackerThread(QThread):
                         # Game Started
                         self.active_sessions[game.id] = time.time()
                         self.session_elapsed[game.id] = 0.0
-                        logger.info(f"Detected game start: {game.name}")
+                        start_time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+                        self.session_start_formatted[game.id] = start_time_str
+                        logger.info(f"Detected game start: {game.name} at {start_time_str}")
                         self.game_started.emit(game.id, game.name)
 
                     elif is_active and was_running:
@@ -178,7 +181,13 @@ class TimeTrackerThread(QThread):
                     elif not is_active and was_running:
                         # Game Stopped
                         sess_time = self.session_elapsed.get(game.id, 0.0)
-                        logger.info(f"Detected game stop: {game.name} (Session: {sess_time:.1f}s)")
+                        end_time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+                        start_time_str = self.session_start_formatted.pop(game.id, end_time_str)
+
+                        if sess_time > 0:
+                            self.db_manager.record_game_session(game.id, start_time_str, end_time_str, sess_time)
+
+                        logger.info(f"Detected game stop: {game.name} (Session: {sess_time:.1f}s, {start_time_str} -> {end_time_str})")
                         self.game_stopped.emit(game.id, game.name, sess_time)
                         
                         if game.id in self.active_sessions:
