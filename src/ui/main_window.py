@@ -49,6 +49,7 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(MAIN_STYLE)
 
         self.cards: Dict[str, GameCardWidget] = {}
+        self.current_columns = 0
 
         self.init_ui()
         self.init_system_tray()
@@ -274,13 +275,24 @@ class MainWindow(QMainWindow):
             self.detail_view.set_game(game)
             self.switch_view(4)
 
+    def rearrange_library_grid(self, columns: int):
+        self.current_columns = columns
+        if not hasattr(self, 'cards') or not self.cards:
+            return
+        cards_list = list(self.cards.values())
+        for idx, card in enumerate(cards_list):
+            row = idx // columns
+            col = idx % columns
+            self.grid_layout.addWidget(card, row, col)
+
     def reload_library_grid(self):
-        # Clear existing card widgets
+        # Clear existing card widgets safely (hide first to avoid temporary top-level floating window artifact)
         while self.grid_layout.count():
             item = self.grid_layout.takeAt(0)
             if item:
                 widget = item.widget()
                 if widget:
+                    widget.hide()
                     widget.setParent(None)
                     widget.deleteLater()
 
@@ -316,7 +328,10 @@ class MainWindow(QMainWindow):
             self.grid_layout.addWidget(empty_msg, 0, 0, 1, 3)
             return
 
-        columns = max(3, (self.width() - 260) // 250)
+        avail_width = self.library_scroll.width() if hasattr(self, 'library_scroll') and self.library_scroll.width() > 0 else (self.width() - 260)
+        columns = max(3, (avail_width - 40) // 250)
+        self.current_columns = columns
+
         for idx, game in enumerate(games):
             card = GameCardWidget(game)
             card.launch_requested.connect(self.launch_game)
@@ -867,7 +882,11 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        self.reload_library_grid()
+        if hasattr(self, 'stacked_widget') and self.stacked_widget.currentIndex() == 0:
+            avail_width = self.library_scroll.width() if hasattr(self, 'library_scroll') and self.library_scroll.width() > 0 else (self.width() - 260)
+            new_columns = max(3, (avail_width - 40) // 250)
+            if new_columns != self.current_columns:
+                self.rearrange_library_grid(new_columns)
 
     def closeEvent(self, event):
         if self.is_force_quitting:
