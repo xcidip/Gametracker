@@ -15,6 +15,7 @@ from src.config import APP_NAME
 from src.database import DatabaseManager
 from src.core.tracker import TimeTrackerThread
 from src.ui.main_window import MainWindow
+from src.ui.icon_factory import create_app_icon
 
 def setup_logging():
     logging.basicConfig(
@@ -36,6 +37,10 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setStyle("Fusion")
+
+    # Set modern gaming application icon globally
+    app_icon = create_app_icon()
+    app.setWindowIcon(app_icon)
 
     # Initialize Persistence Manager
     db_manager = DatabaseManager()

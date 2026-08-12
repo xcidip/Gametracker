@@ -48,15 +48,14 @@ class GameCardWidget(QFrame):
         layout.setContentsMargins(10, 8, 10, 8)
         layout.setSpacing(4)
 
-        # Top Header: Action button (Launch) & options menu button
+        # Top Header: Playtime badge & options menu button
         top_layout = QHBoxLayout()
         top_layout.setSpacing(6)
-        self.btn_action = QPushButton()
-        self.btn_action.setObjectName("PrimaryButton")
-        self.btn_action.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.update_action_button()
-        self.btn_action.clicked.connect(self.on_action_clicked)
-        top_layout.addWidget(self.btn_action, 1)
+
+        self.playtime_label = QLabel()
+        self.playtime_label.setObjectName("PlaytimeBadge")
+        self.playtime_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top_layout.addWidget(self.playtime_label, 1)
 
         self.btn_favorite = QPushButton()
         self.btn_favorite.setFixedSize(24, 24)
@@ -91,11 +90,13 @@ class GameCardWidget(QFrame):
         self.title_label.setWordWrap(True)
         layout.addWidget(self.title_label)
 
-        # Playtime / Speed Badge
-        self.playtime_label = QLabel()
-        self.playtime_label.setObjectName("PlaytimeBadge")
-        self.playtime_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.playtime_label)
+        # Action button (Launch / Play button)
+        self.btn_action = QPushButton()
+        self.btn_action.setObjectName("PrimaryButton")
+        self.btn_action.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.update_action_button()
+        self.btn_action.clicked.connect(self.on_action_clicked)
+        layout.addWidget(self.btn_action)
 
         # Download Progress Bar (visible if downloading)
         self.progress_bar = QProgressBar()

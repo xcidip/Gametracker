@@ -5,6 +5,11 @@ import logging
 from typing import Dict, List, Optional
 from pathlib import Path
 
+# Ensure project root is in sys.path when script is executed directly
+project_root = Path(__file__).resolve().parent.parent.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QPixmap
 from PyQt6.QtWidgets import (
@@ -27,6 +32,8 @@ from src.ui.views.stats_view import StatsViewWidget
 from src.ui.views.debug_view import DebugViewWidget
 from src.ui.views.launchers_view import LaunchersViewWidget
 from src.ui.views.game_detail_view import GameDetailViewWidget
+from src.ui.views.settings_view import SettingsViewWidget
+from src.ui.icon_factory import create_app_icon
 
 logger = logging.getLogger("MainWindow")
 
@@ -42,6 +49,7 @@ class MainWindow(QMainWindow):
         self.download_workers: Dict[str, TorrentDownloadWorker] = {}
 
         self.setWindowTitle("Game & App Playtime Tracker")
+        self.setWindowIcon(create_app_icon())
         self.resize(1100, 720)
         self.setMinimumSize(900, 600)
 
@@ -110,39 +118,11 @@ class MainWindow(QMainWindow):
         self.btn_nav_stores.clicked.connect(lambda: self.switch_view(3))
         sb_layout.addWidget(self.btn_nav_stores)
 
-        sb_layout.addSpacing(15)
-
-        self.btn_add_exe = QPushButton("＋ Add Custom .EXE")
-        self.btn_add_exe.setObjectName("PrimaryButton")
-        self.btn_add_exe.clicked.connect(self.open_add_game_dialog)
-        sb_layout.addWidget(self.btn_add_exe)
-
-        self.btn_torrent = QPushButton("Download Torrent/Magnet")
-        self.btn_torrent.setObjectName("SecondaryButton")
-        self.btn_torrent.clicked.connect(self.open_torrent_dialog)
-        sb_layout.addWidget(self.btn_torrent)
-
-        sb_layout.addSpacing(10)
-
-        # File Storage / Backup Actions
-        self.btn_export = QPushButton("📂 Export data File")
-        self.btn_export.setObjectName("SecondaryButton")
-        self.btn_export.clicked.connect(self.export_data_file)
-        sb_layout.addWidget(self.btn_export)
-
-        self.btn_import = QPushButton("📂 Import Data File")
-        self.btn_import.setObjectName("SecondaryButton")
-        self.btn_import.clicked.connect(self.import_data_file)
-        sb_layout.addWidget(self.btn_import)
-
-        sb_layout.addSpacing(10)
-
-        # Windows Startup Toggle Button
-        self.btn_startup = QPushButton()
-        self.btn_startup.setCheckable(True)
-        self.update_startup_button_state()
-        self.btn_startup.clicked.connect(self.toggle_startup)
-        sb_layout.addWidget(self.btn_startup)
+        self.btn_nav_settings = QPushButton("⚙️ Settings")
+        self.btn_nav_settings.setObjectName("NavButton")
+        self.btn_nav_settings.setCheckable(True)
+        self.btn_nav_settings.clicked.connect(lambda: self.switch_view(4))
+        sb_layout.addWidget(self.btn_nav_settings)
 
         sb_layout.addStretch()
 
@@ -231,7 +211,16 @@ class MainWindow(QMainWindow):
         self.launchers_view.library_updated.connect(self.reload_library_grid)
         self.stacked_widget.addWidget(self.launchers_view)
 
-        # View 4: Game Detail View (Takes up entire library screen)
+        # View 4: Settings View
+        self.settings_view = SettingsViewWidget(parent=self)
+        self.settings_view.add_exe_requested.connect(self.open_add_game_dialog)
+        self.settings_view.torrent_requested.connect(self.open_torrent_dialog)
+        self.settings_view.export_requested.connect(self.export_data_file)
+        self.settings_view.import_requested.connect(self.import_data_file)
+        self.settings_view.startup_toggled.connect(self.toggle_startup)
+        self.stacked_widget.addWidget(self.settings_view)
+
+        # View 5: Game Detail View (Takes up entire library screen)
         self.detail_view = GameDetailViewWidget()
         self.detail_view.back_requested.connect(lambda: self.switch_view(0))
         self.detail_view.launch_requested.connect(self.launch_game)
@@ -250,12 +239,13 @@ class MainWindow(QMainWindow):
         self.reload_library_grid()
 
     def switch_view(self, index: int):
-        self.btn_nav_library.setChecked(index == 0 or index == 4)
+        self.btn_nav_library.setChecked(index == 0 or index == 5)
         self.btn_nav_stats.setChecked(index == 1)
         self.btn_nav_debug.setChecked(index == 2)
         self.btn_nav_stores.setChecked(index == 3)
+        self.btn_nav_settings.setChecked(index == 4)
 
-        if index == 4:
+        if index == 5:
             self.top_bar.hide()
         else:
             self.top_bar.show()
@@ -268,12 +258,14 @@ class MainWindow(QMainWindow):
             self.debug_view.refresh_info()
         elif index == 3:
             self.launchers_view.refresh_scanned_games()
+        elif index == 4:
+            self.settings_view.refresh_settings()
 
     def open_game_detail(self, game_id: str):
         game = self.db_manager.get_game_by_id(game_id)
         if game:
             self.detail_view.set_game(game)
-            self.switch_view(4)
+            self.switch_view(5)
 
     def rearrange_library_grid(self, columns: int):
         self.current_columns = columns
@@ -542,15 +534,17 @@ class MainWindow(QMainWindow):
         """Initializes system tray icon and context menu for silent background tracking."""
         self.tray_icon = QSystemTrayIcon(self)
         
-        # Use window icon or create default icon
+        # Use custom gaming application icon
         app_icon = self.windowIcon()
         if app_icon.isNull():
-            app_icon = QIcon()
+            app_icon = create_app_icon()
+            self.setWindowIcon(app_icon)
+
         self.tray_icon.setIcon(app_icon)
         self.tray_icon.setToolTip("GameTracker - Playtime Tracking Engine Running")
 
-        tray_menu = QMenu(self)
-        tray_menu.setStyleSheet("""
+        self.tray_menu = QMenu(self)
+        self.tray_menu.setStyleSheet("""
             QMenu {
                 background-color: #1E2235;
                 color: #FFFFFF;
@@ -558,54 +552,96 @@ class MainWindow(QMainWindow):
                 border-radius: 6px;
                 padding: 4px;
             }
+            QMenu::item {
+                padding: 6px 16px;
+                border-radius: 4px;
+            }
+            QMenu::item:disabled {
+                color: #8E9BB0;
+                font-weight: bold;
+                font-size: 11px;
+            }
             QMenu::item:selected {
                 background-color: #6C5CE7;
             }
+            QMenu::separator {
+                height: 1px;
+                background: #2B304A;
+                margin: 4px 0px;
+            }
         """)
 
-        action_show = tray_menu.addAction("🎮 Open GameTracker")
-        action_show.triggered.connect(self.restore_from_tray)
+        # Rebuild tray menu dynamically right before showing
+        self.tray_menu.aboutToShow.connect(self.update_tray_menu)
+        self.update_tray_menu()
 
-        action_detect = tray_menu.addAction("⚡ Detect Active Apps")
-        action_detect.triggered.connect(self.open_app_detector)
-
-        tray_menu.addSeparator()
-
-        action_startup = tray_menu.addAction("🚀 Launch on Startup")
-        action_startup.setCheckable(True)
-        action_startup.setChecked(is_startup_enabled())
-        action_startup.triggered.connect(self.toggle_startup)
-
-        tray_menu.addSeparator()
-
-        action_quit = tray_menu.addAction("❌ Exit Application")
-        action_quit.triggered.connect(self.force_quit)
-
-        self.tray_icon.setContextMenu(tray_menu)
+        self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.activated.connect(self.on_tray_activated)
         self.tray_icon.show()
+
+    def update_tray_menu(self):
+        """Dynamically populates the tray context menu with the last 5 played games."""
+        self.tray_menu.clear()
+
+        action_show = self.tray_menu.addAction("🎮 Open GameTracker")
+        action_show.triggered.connect(self.restore_from_tray)
+
+        action_detect = self.tray_menu.addAction("⚡ Detect Active Apps")
+        action_detect.triggered.connect(self.open_app_detector)
+
+        self.tray_menu.addSeparator()
+
+        # --- Recent 5 Played Games ---
+        recent_title = self.tray_menu.addAction("🕒 RECENTLY PLAYED")
+        recent_title.setEnabled(False)  # Non-clickable section header label
+
+        recent_games = self.db_manager.get_recent_games(5)
+        if recent_games:
+            for game in recent_games:
+                playtime_str = game.formatted_playtime()
+                status = " 🟢" if game.is_running else ""
+                label = f"  {game.name} ({playtime_str}){status}"
+                
+                action = self.tray_menu.addAction(label)
+                if game.icon_path and os.path.exists(game.icon_path):
+                    action.setIcon(QIcon(game.icon_path))
+
+                # Capture game ID in closure for trigger callback
+                gid = game.id
+                action.triggered.connect(lambda _, g_id=gid: self.launch_game(g_id))
+        else:
+            empty_item = self.tray_menu.addAction("  (No games played yet)")
+            empty_item.setEnabled(False)
+
+        self.tray_menu.addSeparator()
+
+        self.action_startup = self.tray_menu.addAction("🚀 Launch on Startup")
+        self.action_startup.setCheckable(True)
+        self.action_startup.setChecked(is_startup_enabled())
+        self.action_startup.triggered.connect(self.toggle_startup)
+
+        self.tray_menu.addSeparator()
+
+        action_quit = self.tray_menu.addAction("❌ Exit Application")
+        action_quit.triggered.connect(self.force_quit)
 
     def restore_from_tray(self):
         self.showNormal()
         self.activateWindow()
+        self.raise_()
 
     def on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger or reason == QSystemTrayIcon.ActivationReason.DoubleClick:
-            if self.isVisible():
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            if self.isVisible() and not self.isMinimized():
                 self.hide()
             else:
                 self.restore_from_tray()
 
     def update_startup_button_state(self):
-        enabled = is_startup_enabled()
-        self.btn_startup.setChecked(enabled)
-        if enabled:
-            self.btn_startup.setText("🚀 Startup: ENABLED")
-            self.btn_startup.setObjectName("SecondaryButton")
-        else:
-            self.btn_startup.setText("🚀 Launch at Startup")
-            self.btn_startup.setObjectName("PrimaryButton")
-        self.btn_startup.setStyle(self.btn_startup.style())
+        if hasattr(self, 'settings_view'):
+            self.settings_view.update_startup_state()
+        if hasattr(self, 'action_startup'):
+            self.action_startup.setChecked(is_startup_enabled())
 
     def toggle_startup(self):
         current = is_startup_enabled()

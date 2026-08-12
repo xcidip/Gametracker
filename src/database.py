@@ -285,6 +285,22 @@ class DatabaseManager:
         """Returns list of all games in library."""
         return list(self.games.values())
 
+    def get_recent_games(self, limit: int = 5) -> List[GameEntry]:
+        """Returns the top 'limit' games sorted by last_played timestamp descending."""
+        games = list(self.games.values())
+
+        def _recent_key(g):
+            if not g.last_played or g.last_played == "Never":
+                return (1, -g.playtime)
+            try:
+                parts = [int(p) for p in g.last_played.replace('-', ' ').replace(':', ' ').split()]
+                return (0, tuple(-p for p in parts))
+            except Exception:
+                return (1, -g.playtime)
+
+        games.sort(key=_recent_key)
+        return games[:limit]
+
     def get_game_by_id(self, game_id: str) -> Optional[GameEntry]:
         return self.games.get(game_id)
 
